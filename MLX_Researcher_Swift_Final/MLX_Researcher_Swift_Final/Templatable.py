@@ -23,9 +23,8 @@ import sys
 import os
 from typing import List
 
-pdf_path = "Data_Activisim_Piechart_Activity.pdf"
 
-pdf_path = "Data_Activisim_Piechart_Activity.pdf"
+pdf_path = "Final_Activity.pdf"
 
 text_chunks = []
 with pdfplumber.open(pdf_path) as pdf:
@@ -103,27 +102,21 @@ def ask(question: str) -> str:
                 context_text = "\n".join(context_chunks)
 
                 messages = [
-                {
-                    "role": "user",
-                    "content": f"""You are an expert data activism and programming tutor for high school students.
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an expert who only teaches data activism and Python programming to K–12 students. "
+                            "You explain concepts step by step using clear, scaffolded language. "
+                            "You never provide exact code solutions. "
+                            "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. "
+                            "For general programming questions (like \"What is a function?\"), give a full explanation with a short example, but do not solve specific problems. "
+                            "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"
+                            f"Context:\n{context_text}"
+                        ),
+                    },
+                    {"role": "user", "content": question},
+                ]
 
-                    Your role is to provide step-by-step hints to guide students in completing coding and data visualization tasks. You do not write full solutions or complete the code for them. Instead, you offer clear, concise, and detailed hints for only the next step they should take, focusing on replacing any placeholder question marks (?) in their code.
-
-                    Always ensure:
-                    - Your responses are limited to topics related to data activism, coding, and data visualization.
-                    - You avoid answering any questions unrelated to these topics.
-                    - Your hints are detailed enough for the student to take confident action but never include the full solution.
-                    - If a student asks about definitions or programming concepts related to data activism, provide direct and clear explanations.
-                    - Encourage students to ask more specific questions about data activism if they ask general or unrelated questions.
-                    Respond using no more than 5 clear and precise sentences per hint. Do not include any code snippets, code blocks, or print statements in your response unless explicitly asked for code.
-
-                    Context:
-                    {context_text}
-
-                    Task:
-                    Question: {question}"""
-                        }
-                    ]
 
                 prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
 
@@ -140,6 +133,7 @@ def ask(question: str) -> str:
                     max_tokens=1024,
                     #sampler=make_sampler(temp=0.0, top_p=1.0),
                     prompt_cache=prompt_cache
+                    #verbose=True
                 ):
                     response_text += response.text
                 save_prompt_cache(cache_file, prompt_cache)
@@ -148,18 +142,20 @@ def ask(question: str) -> str:
         else:
                 print("off-topic")
                 messages = [
-                {
-                    "role": "user",
-                    "content": f"""You are an expert data‑activism and programming tutor for high‑school students.
-                        You only discuss coding, data visualization and other topics directly related to data activism.
-                        If the student asks anything off topic, respond in exactly two sentences:
-                        1) remind them that we’re focusing on data‑activism tasks;
-                        2) invite them to ask a new question about data activism.
-                        Use the conversation history to guide the student back to asking questions more on topic questions as they previously talked about.
-                    Task:
-                    Question: {"student just asked an off topic question, guide them back to data activism?"}"""
-                        }
-                    ]
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an expert who only teaches data activism and Python programming to K–12 students. "
+                            "You explain concepts step by step using clear, scaffolded language. "
+                            "You never provide exact code solutions. "
+                            "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. "
+                            "For general programming questions (like \"What is a function?\"), give a full explanation with a short example, but do not solve specific problems. "
+                            "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming."
+                        ),
+                    },
+                    {"role": "user", "content": question},
+                ]
+
 
                 prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
 
@@ -175,6 +171,7 @@ def ask(question: str) -> str:
                     prompt,
                     max_tokens=1024,
                     prompt_cache=prompt_cache
+                    #verbose=True
                     #sampler=make_sampler(temp=0.0, top_p=1.0),
                     #prompt_cache=prompt_cache,
                 ):
