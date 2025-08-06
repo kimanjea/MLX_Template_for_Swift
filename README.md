@@ -1,7 +1,4 @@
-# MLX_Template_for_Swift
-haha
-
-# BLUE COMPUTER
+# AVELA AI & XR LAB
 
 A SwiftUI chat client paired with a Python FastAPI + MLX backend for interactive data‑activism tutoring and code hints.
 
@@ -48,19 +45,24 @@ A SwiftUI chat client paired with a Python FastAPI + MLX backend for interactive
 
 ## Project Structure
 
+Most Important files
+
 ```
-├── README.md
-├── SwiftClient/
-│   ├── ChatViewModel.swift
-│   ├── ContentView.swift
-│   
-└── Backend/
-    ├── server.py
-    |-- Templatable.py
-    ├── Data_Activisim_Piechart_Activity.pdf
-    ├── mistral_prompt.safetensors (cache)
-    ├── data_activism_classifier/
-    └── requirements.txt
+MLX_Template_for_Swift
+|
+|--MLX_Researcher_Swift_Final
+|         |
+|         |--MLX_Researcher_Swift_Final
+|                  |
+|                  |-- server.py
+|                  |-- templatable.py 
+|                  |-- ChatViewModel.swift
+|                  |-- ContentView.swift
+|                  |-- Data_activism_activity.pdf
+|                  |-- Data_activism_classifier
+|                  |          | 
+|                  |          | --model.safetensors (very important)
+|                               
 ```
 
 ## Installation
@@ -68,16 +70,35 @@ A SwiftUI chat client paired with a Python FastAPI + MLX backend for interactive
 1. **Clone the repo**
 
    ```bash
-   git clone https://github.com/yourusername/blue-computer.git
-   cd blue-computer
+   git clone https://github.com/kimanjea/MLX_Template_for_Swift.git
+   cd MLX_Template_for_Swift
+
+   //this is where you open your folder from in xcode 26
+   cd MLX_Researcher_Swift_Final
+
+   // this is where your app and server all leave
+   cd MLX_Researcher_Swift_Final
    ```
 
 2. **Backend setup**
 
    ```bash
-   cd Backend
-   python3 -m venv venv
+   cd MLX_Swift_Template
+
+   python3.11 -m venv venv
    source venv/bin/activate
+   python3.11 -m pip install mlx_lm
+   python3.11 -m pip install langchain
+   python3.11 -m pip install sentence-transformers
+   python3.11 -m pip install torch
+   python3.11 -m pip install pdfplumber
+   python3.11 -m pip install datasets
+   python3.11 -m pip install scikit-learn pandas 
+   python3.11 -m pip install "transformers[torch]" accelerate
+   python3.11 -m  pip install 'accelerate>=0.26.0'
+
+   source venv/bin/activate
+
    pip install -r requirements.txt
    ```
 
@@ -111,7 +132,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 ## Running the iOS/macOS App
 
-1. Build and run in Xcode.
+1. Build and run in Xcode 26.
 2. Interact via the chat UI; type your question or select a suggestion.
 3. Messages stream back from the MLX backend.
 
@@ -138,4 +159,4 @@ Contributions are welcome! Please open issues or pull requests against the `deve
 
 ## License
 
-Distributed under the Apache License. See `LICENSE` for details.
+Distributed under the Apache 2.0 License. See `LICENSE` for details.
