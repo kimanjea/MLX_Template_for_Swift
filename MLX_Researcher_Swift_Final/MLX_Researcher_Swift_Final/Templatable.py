@@ -23,7 +23,7 @@ import sys
 import os
 from typing import List
 
-login(token= "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")
+pdf_path = "Data_Activisim_Piechart_Activity.pdf"
 
 pdf_path = "Data_Activisim_Piechart_Activity.pdf"
 
@@ -64,7 +64,7 @@ def retrieve_context(question, docs, embeddings, embedder, top_k=1):
     return [docs[i].page_content for i in top_k_idx]
 
 
-model, tokenizer = load ("google/gemma-3-1b-it")
+model, tokenizer = load ("ShukraJaliya/BLUECOMPUTER.2")
 
 BASE_DIR = os.path.dirname(__file__)
 cache_file = os.path.join(BASE_DIR, "mistral_prompt.safetensors")
