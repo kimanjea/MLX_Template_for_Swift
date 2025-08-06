@@ -3,52 +3,102 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var vm = ChatViewModel()
 
-    // Your static suggestions
-    let promptSuggestions = [
+    // Sidebar suggestions
+    let sidebarSuggestions = [
         "What is data activism?",
         "Who are important figures in data activism?",
         "How can I become a data activist?",
-        "Explain a Python function",
-        "Show a pie-chart example",
-        "What is black-box programming?",
-        "Quiz me on data terms"
+        "What is black box programming?",
+        "What are some basic coding concepts?"
+    ]
+    
+    // Bottom quick actions
+    let bottomSuggestions = [
+        ["Lesson recall", "Summarize concepts", "Provide an example", "Quiz Me"],
+        ["Current events", "Data Activism Quotes", "Important figures"]
     ]
 
     var body: some View {
-        NavigationView {
+        ZStack {
+            // Background layer
+            Image("Background")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .ignoresSafeArea()
+
             HStack(spacing: 0) {
-                // MARK: – Sidebar
-                VStack(alignment: .leading) {
-                    Text("Suggested Questions")
-                        .font(.headline)
-                        .padding(.top, 16)
-                        .padding(.horizontal)
+                // Sidebar
+                VStack(alignment: .leading, spacing: 0) {
+                    // Header with logo and title
+                    HStack(spacing: 12) {
+                        Image("Logo")
+                            .resizable()
+                            .frame(width: 44, height: 44)
+                            .cornerRadius(10)
+                        Text("AVELA AI")
+                            .font(.largeTitle.bold())
+                            .foregroundColor(.black)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 20)
+
+                    Rectangle()
+                        .fill(Color.black.opacity(0.2))
+                        .frame(height: 1)
+                        .padding(.horizontal, 20)
+
+                    Text("Conversations")
+                        .font(.title2.weight(.medium))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
 
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
-                            ForEach(promptSuggestions, id: \.self) { suggestion in
-                                Text(suggestion)
-                                    .font(.subheadline)
-                                    .padding(.vertical, 8)
-                                    .padding(.horizontal, 12)
-                                    .background(
-                                        Capsule()
-                                            .stroke(Color.gray.opacity(0.6), lineWidth: 1)
-                                    )
-                                    .foregroundColor(.primary)
-                                    // no .onTapGesture -> purely decorative
+                            ForEach(sidebarSuggestions, id: \.self) { suggestion in
+                                Button(action: {
+                                    vm.input = suggestion
+                                }) {
+                                    Text(suggestion)
+                                        .font(.system(size: 14, weight: .medium))
+                                        .padding(.vertical, 12)
+                                        .padding(.horizontal, 16)
+                                        .frame(maxWidth: .infinity)
+                                        .background(
+                                            Capsule()
+                                                .stroke(Color.black.opacity(0.3), lineWidth: 1.5)
+                                        )
+                                        .foregroundColor(.black)
+                                        .multilineTextAlignment(.center)
+                                }
                             }
                         }
                         .padding(.vertical)
                     }
                 }
-                .frame(minWidth: 200, maxWidth: 250)
-        
+                .frame(width: 320)
 
-                Divider()
+                // Separator
+                Rectangle()
+                    .fill(Color.black.opacity(0.2))
+                    .frame(width: 1)
 
-                // MARK: – Chat area
-                VStack {
+                // Main chat area
+                VStack(spacing: 0) {
+                    // Top bar with settings icon
+                    HStack {
+                        Spacer()
+                        Button(action: {}) {
+                            Image(systemName: "gearshape")
+                                .font(.title2)
+                                .foregroundColor(.gray)
+                        }
+                        .padding(.trailing, 30)
+                        .padding(.top, 30)
+                    }
+
+                    // Chat history
                     ScrollViewReader { proxy in
                         ScrollView {
                             VStack(alignment: .leading, spacing: 12) {
@@ -87,6 +137,7 @@ struct ContentView: View {
                         }
                     }
 
+                    // Input field and send button
                     HStack {
                         TextField("Type a message…", text: $vm.input)
                             .textFieldStyle(.roundedBorder)
@@ -96,9 +147,42 @@ struct ContentView: View {
                         .disabled(vm.input.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                     .padding()
+
+                    // Bottom suggestions
+                    VStack(spacing: 12) {
+                        ForEach(bottomSuggestions, id: \.self) { row in
+                            HStack(spacing: 12) {
+                                ForEach(row, id: \.self) { suggestion in
+                                    Button(action: {
+                                        vm.input = suggestion
+                                    }) {
+                                        Text(suggestion)
+                                            .font(.system(size: 14, weight: .medium))
+                                            .padding(.vertical, 12)
+                                            .padding(.horizontal, 16)
+                                            .frame(maxWidth: .infinity)
+                                            .background(
+                                                Capsule()
+                                                    .stroke(Color.black.opacity(0.3), lineWidth: 1.5)
+                                            )
+                                            .foregroundColor(.black)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 30)
+                    .padding(.bottom, 12)
                 }
+                .frame(maxWidth: .infinity)
             }
-            .navigationTitle("BLUE COMPUTER")
+            .background(
+                RoundedRectangle(cornerRadius: 30)
+                    .fill(Color(red: 0xFC/255, green: 0xFC/255, blue: 0xF9/255))
+                    .stroke(Color.black, lineWidth: 2)
+            )
+            .padding(.horizontal, 40)
+            .padding(.vertical, 30)
         }
     }
 }
