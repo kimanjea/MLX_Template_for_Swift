@@ -125,7 +125,7 @@ MLX_Template_for_Swift
 Start the FastAPI app with Uvicorn:
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000 
+uvicorn server:app --reload --host 0.0.0.0 --port 8000 
 ```
 
 * **`/ask`**: Accepts `POST` JSON `{ "question": "..." }`, returns `{ "answer": "..." }`.
