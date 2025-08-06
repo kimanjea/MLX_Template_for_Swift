@@ -23,6 +23,8 @@ import sys
 import os
 from typing import List
 
+login(token= "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")
+
 pdf_path = "Data_Activisim_Piechart_Activity.pdf"
 
 text_chunks = []
