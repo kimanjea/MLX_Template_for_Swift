@@ -23,7 +23,6 @@ import sys
 import os
 from typing import List
 
-pdf_path = "Data_Activisim_Piechart_Activity.pdf"
 
 pdf_path = "Data_Activisim_Piechart_Activity.pdf"
 
@@ -87,102 +86,74 @@ clf = pipeline(
     return_all_scores=False
 )
 
-
+# ✅ Define classify before ask()
 def classify(text):
     out = clf(text)[0]
     label_id = int(out["label"].split("_")[-1]) if out["label"].startswith("LABEL_") else out["label"]
-    return "on-topic" if label_id in (1, "1") else "off topic"
+    return "on-topic" if label_id in (1, "1") else "off-topic"
 
-
+# ✅ Now define ask
 def ask(question: str) -> str:
-    if(question):
-        if(classify(question)=="on-topic"):
-            print("on-topic")
-            if question:
-                context_chunks = retrieve_context(question, docs, embeddings, embedder)
-                context_text = "\n".join(context_chunks)
+    if not question:
+        return "Please provide a question."
 
-                messages = [
-                {
-                    "role": "user",
-                    "content": f"""You are an expert data activism and programming tutor for high school students.
+    is_scaffold = "?" in question and ("df[" in question or "groupby" in question)
+    is_on_topic = classify(question) == "on-topic"
 
-                    Your role is to provide step-by-step hints to guide students in completing coding and data visualization tasks. You do not write full solutions or complete the code for them. Instead, you offer clear, concise, and detailed hints for only the next step they should take, focusing on replacing any placeholder question marks (?) in their code.
+    if is_on_topic:
+        print("on-topic")
+        context_chunks = retrieve_context(question, docs, embeddings, embedder)
+        if not is_scaffold:
+            context_chunks = [c for c in context_chunks if "?" not in c]
+        context_text = "\n".join(context_chunks)
 
-                    Always ensure:
-                    - Your responses are limited to topics related to data activism, coding, and data visualization.
-                    - You avoid answering any questions unrelated to these topics.
-                    - Your hints are detailed enough for the student to take confident action but never include the full solution.
-                    - If a student asks about definitions or programming concepts related to data activism, provide direct and clear explanations.
-                    - Encourage students to ask more specific questions about data activism if they ask general or unrelated questions.
-                    Respond using no more than 5 clear and precise sentences per hint. Do not include any code snippets, code blocks, or print statements in your response unless explicitly asked for code.
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert who only teaches data activism and Python programming to K–12 students. "
+                    "You explain concepts step by step using clear, scaffolded language. "
+                    "You never provide exact code solutions. "
+                    "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. "
+                    "For general programming questions (like \"What is a function?\"), give a full explanation with a short example, but do not solve specific problems. "
+                    "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"
+                    f"Context:\n{context_text}"
+                ),
+            },
+            {"role": "user", "content": question},
+        ]
 
-                    Context:
-                    {context_text}
+    else:
+        print("off-topic")
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert who only teaches data activism and Python programming to K–12 students. "
+                    "You explain concepts step by step using clear, scaffolded language. "
+                    "You never provide exact code solutions. "
+                    "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. "
+                    "For general programming questions (like \"What is a function?\"), give a full explanation with a short example, but do not solve specific problems. "
+                    "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming."
+                ),
+            },
+            {"role": "user", "content": question},
+        ]
 
-                    Task:
-                    Question: {question}"""
-                        }
-                    ]
+    prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
 
-                prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
+    response_text = ""
+    for response in stream_generate(
+        model,
+        tokenizer,
+        prompt,
+        max_tokens=1024,
+        prompt_cache=None,
+    ):
+        response_text += response.text
 
-                ###########################################
-                # STEP 7: Generate response using MLX
-                ###########################################
-
-
-                response_text = ""
-                for response in stream_generate(
-                    model,
-                    tokenizer,
-                    prompt,
-                    max_tokens=1024,
-                    #sampler=make_sampler(temp=0.0, top_p=1.0),
-                    prompt_cache=prompt_cache
-                ):
-                    response_text += response.text
-                save_prompt_cache(cache_file, prompt_cache)
-                return response_text
-            
-        else:
-                print("off-topic")
-                messages = [
-                {
-                    "role": "user",
-                    "content": f"""You are an expert data‑activism and programming tutor for high‑school students.
-                        You only discuss coding, data visualization and other topics directly related to data activism.
-                        If the student asks anything off topic, respond in exactly two sentences:
-                        1) remind them that we’re focusing on data‑activism tasks;
-                        2) invite them to ask a new question about data activism.
-                        Use the conversation history to guide the student back to asking questions more on topic questions as they previously talked about.
-                    Task:
-                    Question: {"student just asked an off topic question, guide them back to data activism?"}"""
-                        }
-                    ]
-
-                prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-
-                ###########################################
-                # STEP 7: Generate response using MLX
-                ###########################################
-
-
-                response_text = ""
-                for response in stream_generate(
-                    model,
-                    tokenizer,
-                    prompt,
-                    max_tokens=1024,
-                    prompt_cache=prompt_cache
-                    #sampler=make_sampler(temp=0.0, top_p=1.0),
-                    #prompt_cache=prompt_cache,
-                ):
-                    response_text += response.text
-                return response_text
-
-
-
+    save_prompt_cache(cache_file, prompt_cache)
+    return response_text
 
 
 
