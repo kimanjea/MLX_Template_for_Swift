@@ -64,6 +64,10 @@ def retrieve_context(question, docs, embeddings, embedder, top_k=1):
 
 
 model, tokenizer = load ("ShukraJaliya/BLUECOMPUTER.2")
+tokenizer = AutoTokenizer.from_pretrained(
+    "ShukraJaliya/BLUECOMPUTER.2",
+    trust_remote_code=True,
+)
 
 BASE_DIR = os.path.dirname(__file__)
 cache_file = os.path.join(BASE_DIR, "mistral_prompt.safetensors")
@@ -72,7 +76,6 @@ if os.path.exists(cache_file):
 else:
     prompt_cache = make_prompt_cache(model)
 
-#question = f""" how can i make a data visualization """
 
 
 classifier_model_path = os.path.join(BASE_DIR, "data_activism_classifier")
@@ -100,21 +103,28 @@ def ask(question: str) -> str:
             if question:
                 context_chunks = retrieve_context(question, docs, embeddings, embedder)
                 context_text = "\n".join(context_chunks)
-
+                print(context_text)
+                
+                tokenizer.add_special_tokens({
+                    "additional_special_tokens": ["<|im_start|>", "<|im_end|>"]
+                })
+                
                 messages = [
                     {
                         "role": "system",
                         "content": (
-                            "You are an expert who only teaches data activism and Python programming to K–12 students. "
-                            "You explain concepts step by step using clear, scaffolded language. "
-                            "You never provide exact code solutions. "
-                            "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. "
-                            "For general programming questions (like \"What is a function?\"), give a full explanation with a short example, but do not solve specific problems. "
-                            "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"
-                            f"Context:\n{context_text}"
-                        ),
+                            """You are an expert who only teaches data activism and Python programming to K–12 students. "
+                            You explain concepts step by step using clear, scaffolded language.
+                            You never provide exact code solutions.
+                            If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps.
+                            For general programming questions (like \"What is a function?\"), give a full explanation with a short example, but do not solve specific problems.
+                            If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"""
+                        )
                     },
-                    {"role": "user", "content": question},
+                    {
+                        "role": "user",
+                        "content": f"Here is the context:\n\n{context_text}\n\n Answer the task: {question}"
+                    }
                 ]
 
 
@@ -123,60 +133,58 @@ def ask(question: str) -> str:
                 ###########################################
                 # STEP 7: Generate response using MLX
                 ###########################################
-
-
-                response_text = ""
-                for response in stream_generate(
+                
+                response = generate(
                     model,
                     tokenizer,
-                    prompt,
-                    max_tokens=1024,
-                    #sampler=make_sampler(temp=0.0, top_p=1.0),
-                    prompt_cache=prompt_cache
-                    #verbose=True
-                ):
-                    response_text += response.text
+                    prompt=prompt,
+                    verbose=True,
+                    prompt_cache=prompt_cache,
+                )
+                    
                 save_prompt_cache(cache_file, prompt_cache)
-                return response_text
+                return response
             
         else:
                 print("off-topic")
+                tokenizer.add_special_tokens({
+                    "additional_special_tokens": ["<|im_start|>", "<|im_end|>"]
+                })
+                
                 messages = [
                     {
                         "role": "system",
                         "content": (
-                            "You are an expert who only teaches data activism and Python programming to K–12 students. "
-                            "You explain concepts step by step using clear, scaffolded language. "
-                            "You never provide exact code solutions. "
-                            "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. "
-                            "For general programming questions (like \"What is a function?\"), give a full explanation with a short example, but do not solve specific problems. "
-                            "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming."
+                            """You are an expert in data activism and Python programming for K–12 students.
+                        You explain concepts step by step using clear, scaffolded language, without giving full code solutions.
+                        If a student asks something off-topic or requests unrelated content, politely redirect them back to data activism or Python by asking:
+                        “How could you apply that idea to a data activism project? What real-world issue would you like to explore with data?”
+                        When you redirect or answer follow-ups, keep your response to two concise sentences.
+                        Explain the answer using the chat history to tie back their questions.
+                            """
                         ),
                     },
-                    {"role": "user", "content": question},
+                    {"role": "user",
+                    "content": (
+                    f"Student just asked: {question} Explain the answer using the chat history or redirect them if they are off topic."
+                    )}
                 ]
-
 
                 prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
 
                 ###########################################
                 # STEP 7: Generate response using MLX
                 ###########################################
-
-
-                response_text = ""
-                for response in stream_generate(
+                
+                response = generate(
                     model,
                     tokenizer,
-                    prompt,
-                    max_tokens=1024,
-                    prompt_cache=prompt_cache
-                    #verbose=True
-                    #sampler=make_sampler(temp=0.0, top_p=1.0),
-                    #prompt_cache=prompt_cache,
-                ):
-                    response_text += response.text
-                return response_text
+                    prompt=prompt,
+                    verbose=True,
+                    prompt_cache=prompt_cache,
+                )
+                    
+                return response
 
 
 
