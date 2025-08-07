@@ -31,10 +31,12 @@ class ChatViewModel: ObservableObject {
         let question = input
         messages.append("You: \(question)")
         input = ""
-
+        isReady = false
         Task { @MainActor in
+            let start = Date()
             do {
                 var request = URLRequest(url: endpointURL)
+                request.timeoutInterval = 300
                 request.httpMethod = "POST"
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 let payload = ["question": question]
@@ -47,10 +49,13 @@ class ChatViewModel: ObservableObject {
                 }
 
                 let askResp = try JSONDecoder().decode(AskResponse.self, from: data)
-                messages.append("Bot: \(askResp.answer)")
+                let elapsed = Date().timeIntervalSince(start)
+                messages.append("Bot (\(String(format: "%.2f", elapsed))s): \(askResp.answer)")
             } catch {
-                messages.append("Error: \(error.localizedDescription)")
+                let elapsed = Date().timeIntervalSince(start)
+                messages.append("Error (\(String(format: "%.2f", elapsed))s): \(error.localizedDescription)")
             }
+            isReady = true
         }
     }
 }
