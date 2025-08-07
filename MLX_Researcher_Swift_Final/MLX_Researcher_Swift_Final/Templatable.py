@@ -1,5 +1,3 @@
-
-
 from mlx_lm import load, generate
 import pdfplumber
 from sentence_transformers import SentenceTransformer
@@ -22,7 +20,23 @@ import textwrap
 import sys
 import os
 from typing import List
+from openai import OpenAI
 
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+chat_history = [
+    {
+        "role": "system",
+        "content": (
+            "You are an expert who only teaches data activism and Python programming to K–12 students. "
+            "You explain concepts step by step using clear, scaffolded language.\n"
+            "You never provide exact code solutions.\n"
+            "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps.\n"
+            "For general programming questions (like 'What is a function?'), give a full explanation with a short example, but do not solve specific problems.\n"
+            "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"
+        )
+    }
+]
 
 pdf_path = "Final_Activity.pdf"
 
@@ -63,19 +77,18 @@ def retrieve_context(question, docs, embeddings, embedder, top_k=1):
     return [docs[i].page_content for i in top_k_idx]
 
 
-model, tokenizer = load ("ShukraJaliya/BLUECOMPUTER.2")
-tokenizer = AutoTokenizer.from_pretrained(
-    "ShukraJaliya/BLUECOMPUTER.2",
-    trust_remote_code=True,
-)
+#model, tokenizer = load ("ShukraJaliya/BLUECOMPUTER.2")
+#tokenizer = AutoTokenizer.from_pretrained(
+#    "ShukraJaliya/BLUECOMPUTER.2",
+#    trust_remote_code=True,
+#)
 
 BASE_DIR = os.path.dirname(__file__)
-cache_file = os.path.join(BASE_DIR, "mistral_prompt.safetensors")
-if os.path.exists(cache_file):
-    prompt_cache = load_prompt_cache(cache_file)
-else:
-    prompt_cache = make_prompt_cache(model)
-
+#cache_file = os.path.join(BASE_DIR, "mistral_prompt.safetensors")
+#if os.path.exists(cache_file):
+#    prompt_cache = load_prompt_cache(cache_file)
+#else:
+#    prompt_cache = make_prompt_cache(model)
 
 
 classifier_model_path = os.path.join(BASE_DIR, "data_activism_classifier")
@@ -97,97 +110,54 @@ def classify(text):
 
 
 def ask(question: str) -> str:
-    if(question):
-        if(classify(question)=="on-topic"):
+    if question:
+        chat_history.append({"role": "user", "content": question})
+        if classify(question) == "on-topic":
             print("on-topic")
-            if question:
-                context_chunks = retrieve_context(question, docs, embeddings, embedder)
-                context_text = "\n".join(context_chunks)
-                print(context_text)
-                
-                tokenizer.add_special_tokens({
-                    "additional_special_tokens": ["<|im_start|>", "<|im_end|>"]
-                })
-                
-                messages = [
-                    {
-                        "role": "system",
-                        "content": (
-                            """You are an expert who only teaches data activism and Python programming to K–12 students. "
-                            You explain concepts step by step using clear, scaffolded language.
-                            You never provide exact code solutions.
-                            If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps.
-                            For general programming questions (like \"What is a function?\"), give a full explanation with a short example, but do not solve specific problems.
-                            If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"""
-                        )
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Here is the context:\n\n{context_text}\n\n Answer the task: {question}"
-                    }
-                ]
+            context_chunks = retrieve_context(question, docs, embeddings, embedder)
+            context_text = "\n".join(context_chunks)
+            print(context_text)
 
-
-                prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-
-                ###########################################
-                # STEP 7: Generate response using MLX
-                ###########################################
-                
-                response = generate(
-                    model,
-                    tokenizer,
-                    prompt=prompt,
-                    verbose=True,
-                    prompt_cache=prompt_cache,
-                )
-                    
-                save_prompt_cache(cache_file, prompt_cache)
-                return response
-            
-        else:
-                print("off-topic")
-                tokenizer.add_special_tokens({
-                    "additional_special_tokens": ["<|im_start|>", "<|im_end|>"]
-                })
-                
-                messages = [
-                    {
-                        "role": "system",
-                        "content": (
-                            """You are an expert in data activism and Python programming for K–12 students.
-                        You explain concepts step by step using clear, scaffolded language, without giving full code solutions.
-                        If a student asks something off-topic or requests unrelated content, politely redirect them back to data activism or Python by asking:
-                        “How could you apply that idea to a data activism project? What real-world issue would you like to explore with data?”
-                        When you redirect or answer follow-ups, keep your response to two concise sentences.
-                        Explain the answer using the chat history to tie back their questions.
-                            """
-                        ),
-                    },
-                    {"role": "user",
+            messages = chat_history + [
+                {
+                    "role": "system",
                     "content": (
-                    f"Student just asked: {question} Explain the answer using the chat history or redirect them if they are off topic."
-                    )}
-                ]
+                        f"Here is the context:\n\n{context_text}\n\nAnswer the task: {question}"
+                    )
+                }
+            ]
 
-                prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                store=True,
+            )
+            reply_text = response.choices[0].message.content
+            chat_history.append({"role": "assistant", "content": reply_text})
+            return reply_text
 
-                ###########################################
-                # STEP 7: Generate response using MLX
-                ###########################################
-                
-                response = generate(
-                    model,
-                    tokenizer,
-                    prompt=prompt,
-                    verbose=True,
-                    prompt_cache=prompt_cache,
-                )
-                    
-                return response
+        else:
+            print("off-topic")
+            system_message = {
+                "role": "system",
+                "content": (
+                    "You are an expert in data activism and Python programming for K–12 students.\n"
+                    "You explain concepts step by step using clear, scaffolded language, without giving full code solutions.\n"
+                    "If a student asks something off-topic or requests unrelated content, politely redirect them back to data activism or Python by asking:\n"
+                    "“How could you apply that idea to a data activism project? What real-world issue would you like to explore with data?”\n"
+                    "When you redirect or answer follow-ups, keep your response to two concise sentences.\n"
+                    "Explain the answer using the chat history to tie back their questions."
+                ),
+            }
+            messages = chat_history + [
+                system_message
+            ]
 
-
-
-
-
-
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                store=True,
+            )
+            reply_text = response.choices[0].message.content
+            chat_history.append({"role": "assistant", "content": reply_text})
+            return reply_text
