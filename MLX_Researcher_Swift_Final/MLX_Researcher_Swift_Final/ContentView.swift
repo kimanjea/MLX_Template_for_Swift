@@ -137,17 +137,26 @@ struct ContentView: View {
                         }
                     }
 
-                    // Input field and send button
-                    HStack {
-                        TextField("Type a message…", text: $vm.input)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Send") {
-                            vm.send()
+                    VStack {
+                        if !vm.isReady {
+                            HStack {
+                                ProgressView()
+                                Text("Thinking…")
+                                    .italic()
+                            }
+                            .padding(.bottom, 8)
                         }
-                        .disabled(vm.input.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                    .padding()
 
+                        HStack {
+                            TextField("Type a message…", text: $vm.input)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Send") {
+                                vm.send()
+                            }
+                            .disabled(vm.input.trimmingCharacters(in: .whitespaces).isEmpty || !vm.isReady)
+                        }
+                        .padding()
+                    }
                     // Bottom suggestions
                     VStack(spacing: 12) {
                         ForEach(bottomSuggestions, id: \.self) { row in
