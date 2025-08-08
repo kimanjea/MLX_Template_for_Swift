@@ -24,19 +24,7 @@ from openai import OpenAI
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-chat_history = [
-    {
-        "role": "system",
-        "content": (
-            "You are an expert who only teaches data activism and Python programming to K–12 students. "
-            "You explain concepts step by step using clear, scaffolded language.\n"
-            "You never provide exact code solutions.\n"
-            "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps.\n"
-            "For general programming questions (like 'What is a function?'), give a full explanation with a short example, but do not solve specific problems.\n"
-            "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"
-        )
-    }
-]
+In_chat_history = []
 
 pdf_path = "Final_Activity.pdf"
 
@@ -111,18 +99,29 @@ def classify(text):
 
 def ask(question: str) -> str:
     if question:
-        chat_history.append({"role": "user", "content": question})
+        In_chat_history.append({"role": "user", "content": question})
         if classify(question) == "on-topic":
             print("on-topic")
             context_chunks = retrieve_context(question, docs, embeddings, embedder)
             context_text = "\n".join(context_chunks)
             print(context_text)
 
-            messages = chat_history + [
-                {
+            messages = In_chat_history + [
+                    {
                     "role": "system",
                     "content": (
-                        f"Here is the context:\n\n{context_text}\n\nAnswer the task: {question}"
+                        "You are an expert who only teaches data activism and Python programming to K–12 students. "
+                        "You explain concepts step by step using clear, scaffolded language.\n"
+                        "You never provide exact code solutions.\n"
+                        "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps.\n"
+                        "For general programming questions (like 'What is a function?'), give a full explanation with a short example, but do not solve specific problems.\n"
+                        "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Here is the context:\n\n{context_text}\n\n Answer the task: {question}"
                     )
                 }
             ]
@@ -133,24 +132,26 @@ def ask(question: str) -> str:
                 store=True,
             )
             reply_text = response.choices[0].message.content
-            chat_history.append({"role": "assistant", "content": reply_text})
+            In_chat_history.append({"role": "assistant", "content": reply_text})
             return reply_text
 
         else:
             print("off-topic")
-            system_message = {
-                "role": "system",
-                "content": (
-                    "You are an expert in data activism and Python programming for K–12 students.\n"
-                    "You explain concepts step by step using clear, scaffolded language, without giving full code solutions.\n"
+            
+            messages = In_chat_history + [
+                {
+                        "role": "system",
+                        "content": (
+                            "You are an expert in data activism and Python programming for K–12 students.\n"
                     "If a student asks something off-topic or requests unrelated content, politely redirect them back to data activism or Python by asking:\n"
-                    "“How could you apply that idea to a data activism project? What real-world issue would you like to explore with data?”\n"
                     "When you redirect or answer follow-ups, keep your response to two concise sentences.\n"
                     "Explain the answer using the chat history to tie back their questions."
-                ),
-            }
-            messages = chat_history + [
-                system_message
+                        ),
+                    },
+                    {"role": "user",
+                    "content": (
+                    f"Student just asked an off-topic question here: {question}. Guide the student back on the topic of data activism using the system instructions and the on-topic conversation history"
+                    )}
             ]
 
             response = client.chat.completions.create(
@@ -159,5 +160,4 @@ def ask(question: str) -> str:
                 store=True,
             )
             reply_text = response.choices[0].message.content
-            chat_history.append({"role": "assistant", "content": reply_text})
             return reply_text
