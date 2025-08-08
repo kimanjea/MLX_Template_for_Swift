@@ -60,3 +60,4 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+MLX_Researcher_Swift_Final/MLX_Researcher_Swift_Final/data_activism_classifier/model.safetensors
