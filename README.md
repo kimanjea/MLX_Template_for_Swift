@@ -58,7 +58,7 @@ MLX_Template_for_Swift
 |                  |-- templatable.py 
 |                  |-- ChatViewModel.swift
 |                  |-- ContentView.swift
-|                  |-- Data_activism_activity.pdf
+|                  |-- Final_Activity.pdf
 |                  |-- Data_activism_classifier
 |                  |          | 
 |                  |          | --model.safetensors (very important)
