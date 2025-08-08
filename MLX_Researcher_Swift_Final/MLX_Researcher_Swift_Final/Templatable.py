@@ -95,6 +95,7 @@ def classify(text):
     label_id = int(out["label"].split("_")[-1]) if out["label"].startswith("LABEL_") else out["label"]
     return "on-topic" if label_id in (1, "1") else "off topic"
 
+max_tokens = 1000
 
 def ask(question: str) -> str:
     if(question):
@@ -140,6 +141,7 @@ def ask(question: str) -> str:
                     prompt=prompt,
                     verbose=True,
                     prompt_cache=prompt_cache,
+                    max_tokens=max_tokens,
                 )
                     
                 save_prompt_cache(cache_file, prompt_cache)
@@ -155,18 +157,15 @@ def ask(question: str) -> str:
                     {
                         "role": "system",
                         "content": (
-                            """You are an expert in data activism and Python programming for K–12 students.
-                        You explain concepts step by step using clear, scaffolded language, without giving full code solutions.
-                        If a student asks something off-topic or requests unrelated content, politely redirect them back to data activism or Python by asking:
-                        “How could you apply that idea to a data activism project? What real-world issue would you like to explore with data?”
-                        When you redirect or answer follow-ups, keep your response to two concise sentences.
-                        Explain the answer using the chat history to tie back their questions.
-                            """
+                            "You are an expert in data activism and Python programming for K–12 students.\n"
+                    "If a student asks something off-topic or requests unrelated content, politely redirect them back to data activism or Python by asking:\n"
+                    "When you redirect or answer follow-ups, keep your response to two concise sentences.\n"
+                    "Explain the answer using the chat history to tie back their questions."
                         ),
                     },
                     {"role": "user",
                     "content": (
-                    f"Student just asked: {question} Explain the answer using the chat history or redirect them if they are off topic."
+                    f"Student just asked an off-topic question here: {question}. Guide the student back on the topic of data activism using the system instructions and the on-topic conversation history"
                     )}
                 ]
 
@@ -182,6 +181,7 @@ def ask(question: str) -> str:
                     prompt=prompt,
                     verbose=True,
                     prompt_cache=prompt_cache,
+                    max_tokens=max_tokens,
                 )
                     
                 return response
