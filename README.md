@@ -80,6 +80,15 @@ MLX_Template_for_Swift
    cd MLX_Researcher_Swift_Final
    ```
 
+ if you do not have python3.11 installed in your M chip Mac, use these commands in your base terminal
+
+ '''Terminal
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+brew install python@3.11
+
+ 
 2. **Backend setup**
 
    ```Terminal
@@ -97,6 +106,9 @@ MLX_Template_for_Swift
    python3.11 -m pip install scikit-learn pandas 
    python3.11 -m pip install "transformers[torch]" accelerate
    python3.11 -m  pip install 'accelerate>=0.26.0'
+   python3.11 -m pip install fastapi
+   python3.11 -m  pip install uvicorn
+   Python3.11 -m pip install openai
 
  
    Run your tokens in terminal Line by line on both the main and gpt branch.
@@ -118,10 +130,8 @@ MLX_Template_for_Swift
 ## Configuration
 
 * **Backend**:
-
-  * Place your PDF(s) into `Backend/` (default: `Data_Activisim_Piechart_Activity.pdf`).
-  * Provide your Hugging Face token via `huggingface-cli login` or env var.
   * If you have a pre‐built classifier, ensure it lives in `data_activism_classifier/`.
+Provided here: if you require a V0 version,
 
 * **Client**:
 
