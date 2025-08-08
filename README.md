@@ -82,11 +82,12 @@ MLX_Template_for_Swift
 
 2. **Backend setup**
 
-   ```bash
-   cd MLX_Swift_Template
+   ```Terminal
+   in 
+   cd MLX_Researcher_Swift_Template
 
-   python3.11 -m venv venv
-   source venv/bin/activate
+   
+   
    python3.11 -m pip install mlx_lm
    python3.11 -m pip install langchain
    python3.11 -m pip install sentence-transformers
@@ -97,9 +98,16 @@ MLX_Template_for_Swift
    python3.11 -m pip install "transformers[torch]" accelerate
    python3.11 -m  pip install 'accelerate>=0.26.0'
 
+ 
+   Run your tokens in terminal Line by line on both the main and gpt branch.
+   
+   export OPENAI_API_KEY=#
+   export HUGGINGFACE_HUB_TOKEN=#
+
+//optional but can work without being in specified environment
+   python3.11 -m venv venv
    source venv/bin/activate
 
-   pip install -r requirements.txt
    ```
 
 3. **iOS/macOS app**
