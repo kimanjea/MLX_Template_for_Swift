@@ -21,6 +21,8 @@ import sys
 import os
 from typing import List
 from openai import OpenAI
+import csv
+from datetime import datetime
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -96,12 +98,24 @@ def classify(text):
     label_id = int(out["label"].split("_")[-1]) if out["label"].startswith("LABEL_") else out["label"]
     return "on-topic" if label_id in (1, "1") else "off topic"
 
+csv_log_path = os.path.join(BASE_DIR, "conversation_log.csv")
+
+
+def log_conversation(question, response, topic):
+    file_exists = os.path.isfile(csv_log_path)
+    with open(csv_log_path, mode='a', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        if not file_exists:
+            writer.writerow(['user', 'assistant', 'topic', 'timestamp'])  # Header
+        timestamp = datetime.now().isoformat()
+        writer.writerow([question, response, topic, timestamp])
 
 def ask(question: str) -> str:
     if question:
         In_chat_history.append({"role": "user", "content": question})
         if classify(question) == "on-topic":
             print("on-topic")
+            topic = "on-topic"
             context_chunks = retrieve_context(question, docs, embeddings, embedder)
             context_text = "\n".join(context_chunks)
             print(context_text)
@@ -132,12 +146,14 @@ def ask(question: str) -> str:
                 store=True,
             )
             reply_text = response.choices[0].message.content
+            
             In_chat_history.append({"role": "assistant", "content": reply_text})
+            log_conversation(question, reply_text, topic)
             return reply_text
 
         else:
             print("off-topic")
-            
+            topic = "off-topic"
             messages = In_chat_history + [
                 {
                         "role": "system",
@@ -159,5 +175,7 @@ def ask(question: str) -> str:
                 messages=messages,
                 store=True,
             )
+            
             reply_text = response.choices[0].message.content
+            log_conversation(question, reply_text, topic)
             return reply_text
