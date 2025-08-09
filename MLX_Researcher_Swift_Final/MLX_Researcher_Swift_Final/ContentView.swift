@@ -1,223 +1,446 @@
 import SwiftUI
 
+// 1. Add a struct for a chat session at the top (for demo purposes).
+struct ChatSession: Identifiable {
+    let id: UUID
+    var model: String
+    var messages: [String]
+    let created: Date
+}
+
 struct ContentView: View {
     @StateObject private var vm = ChatViewModel()
-
-    // Updated suggestions to match reference
-    let sidebarSuggestions = [
+    @State private var selectedModel: String = "Gemma"
+    // 2. Replace single session ID with multi-session state:
+    @State private var chatSessions: [ChatSession] = []
+    @State private var selectedSessionID: UUID? = nil
+    @State private var historyFilterModel: String = "Gemma"
+    
+    private let suggestedQuestions = [
         "What is data activism?",
-        "Who are important figures in data activism?",
-        "How can I become a data activist?",
-        "What is black box programming?",
-        "What are some basic coding concepts?"
+        "What is a variable?",
+        "What is Python?",
+        "What is a function?",
+        "Examples of Data Activism"
     ]
     
-    let bottomSuggestions = [
-        ["Lesson recall", "Summarize concepts", "Provide an example", "Quiz Me"],
-        ["Current events", "Data Activism Quotes", "Important figures"]
-    ]
-
-    var body: some View {
-        ZStack {
-            // Background image at the bottom layer
-            Image("Background")
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .ignoresSafeArea(.all)
-            
-            // Single container for everything
-            HStack(spacing: 0) {
-                // Sidebar section
-                VStack(alignment: .leading, spacing: 0) {
-                    // Header section
-                    VStack(alignment: .leading, spacing: 16) {
-                        HStack(spacing: 12) {
-                            Image("Logo")
-                                .resizable()
-                                .frame(width: 44, height: 44)
-                                .cornerRadius(10)
-                            Text("AVELA AI")
-                                .font(.largeTitle.bold())
-                                .foregroundColor(.black)
-                            Spacer()
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 20)
-                    
-                    // Separator line
-                    Rectangle()
-                        .fill(Color.black.opacity(0.2))
-                        .frame(height: 1)
-                        .padding(.horizontal, 20)
-                    
-                    // Conversations section
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Conversations")
-                            .font(.title2.weight(.medium))
-                            .foregroundColor(.black)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 20)
-                    
-                    // Scrollable suggestions
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 12) {
-                            ForEach(sidebarSuggestions, id: \.self) { suggestion in
-                                Button(action: {
-                                    vm.input = suggestion
-                                }) {
-                                    Text(suggestion)
-                                        .font(.system(size: 14, weight: .medium))
-                                        .padding(.vertical, 12)
-                                        .padding(.horizontal, 16)
-                                        .frame(maxWidth: .infinity, alignment: .center)
-                                        .background(
-                                            Capsule()
-                                                .stroke(Color.black.opacity(0.3), lineWidth: 1.5)
-                                                .background(Capsule().fill(Color.clear))
-                                        )
-                                        .foregroundColor(.black)
-                                        .multilineTextAlignment(.center)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
-                    }
-
-                    Spacer()
+    private var boundModel: Binding<String> {
+        Binding(
+            get: {
+                if let sessionID = selectedSessionID,
+                   let session = chatSessions.first(where: { $0.id == sessionID }) {
+                    return session.model
                 }
-                .frame(width: 320)
-                
-                // Vertical separator between sidebar and main content
-                Rectangle()
-                    .fill(Color.black.opacity(0.2))
-                    .frame(width: 1)
-                
-                // Main content area
-                VStack {
-                    Spacer()
-                    VStack(spacing: 30) {
-                        HStack {
-                            Spacer()
-                            Button(action: {}) {
-                                Image(systemName: "gearshape")
-                            }
-                            .font(.title2)
-                            .foregroundColor(.gray)
-                        }
-                        .padding([.top, .trailing], 30)
-
-                        VStack(spacing: 16) {
-                            Text("Welcome Back!")
-                                .font(.system(size: 48, weight: .bold))
-                                .foregroundColor(.black)
-                                .frame(maxWidth: .infinity, alignment: .center)
-
-                            Text("Ready to learn more about data activism?")
-                                .font(.title2)
-                                .foregroundColor(.black.opacity(0.7))
-                                .frame(maxWidth: .infinity, alignment: .center)
-                        }
-                        .padding(.horizontal, 30)
-
-                        VStack(spacing: 20) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 25)
-                                    .fill(Color.white)
-                                    .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
-                                    .frame(height: 560)
-                                
-                                HStack {
-                                    ZStack(alignment: .topLeading) {
-                                        // TextEditor
-                                        TextEditor(text: $vm.input)
-                                            .font(.system(size: 16))
-                                            .foregroundColor(.black)
-                                            .background(Color.clear)
-                                            .scrollContentBackground(.hidden)
-                                            .padding(.horizontal, 4)
-                                            .padding(.vertical, 8)
-                                        
-                                        // Placeholder text inside the white rectangle
-                                        if vm.input.isEmpty {
-                                            Text("Insert Text...")
-                                                .foregroundColor(.gray.opacity(0.6))
-                                                .font(.system(size: 30))
-                                                .padding(.horizontal, 4)
-                                                .padding(.vertical, 8)
-                                                .allowsHitTesting(false)
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    
-                                    VStack {
-                                        Spacer()
-                                        Button("Submit") {
-                                            vm.send()
-                                        }
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 28)
-                                        .padding(.vertical, 12)
-                                        .background(
-                                            Capsule()
-                                                .fill(Color.orange)
-                                        )
-                                        .disabled(vm.input.trimmingCharacters(in: .whitespaces).isEmpty)
-                                    }
-                                    .padding(.bottom, 24)
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 16)
-                            }
-                            .padding(.horizontal, 30)
-                            
-                            // Suggestion buttons
-                            VStack(spacing: 12) {
-                                ForEach(bottomSuggestions, id: \.self) { row in
-                                    HStack(spacing: 12) {
-                                        ForEach(row, id: \.self) { suggestion in
-                                            Button(action: {
-                                                vm.input = suggestion
-                                            }) {
-                                                Text(suggestion)
-                                                    .font(.system(size: 14, weight: .medium))
-                                                    .padding(.vertical, 12)
-                                                    .padding(.horizontal, 16)
-                                                    .frame(maxWidth: .infinity)
-                                                    .background(
-                                                        Capsule()
-                                                            .stroke(Color.black.opacity(0.3), lineWidth: 1.5)
-                                                            .background(Capsule().fill(Color.clear))
-                                                    )
-                                                    .foregroundColor(.black)
-                                            }
-                                            .buttonStyle(PlainButtonStyle())
-                                        }
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 30)
-                            .padding(.bottom, 12) // Changed padding from 30 to 12 to move bubbles closer
-                        }
-                    }
-                    
-                    Spacer()
+                return selectedModel
+            },
+            set: { newValue in
+                selectedModel = newValue
+                if let sessionID = selectedSessionID,
+                   let index = chatSessions.firstIndex(where: { $0.id == sessionID }) {
+                    chatSessions[index].model = newValue
                 }
-                .frame(maxWidth: .infinity)
             }
-            .background(
-                RoundedRectangle(cornerRadius: 30)
-                    .fill(Color(red: 0xFC/255, green: 0xFC/255, blue: 0xF9/255))
-                    .stroke(Color.black, lineWidth: 2)
-            )
-            .padding(.horizontal, 40)
-            .padding(.vertical, 30)
+        )
+    }
+    
+    private var modelSections: [(key: String, value: [ChatSession])] {
+        Dictionary(grouping: chatSessions, by: { $0.model })
+            .sorted { $0.key < $1.key }
+    }
+    
+    var body: some View {
+        TabView {
+            Tab("Home", systemImage: "house.fill") {
+                homeView
+            }
+            
+            TabSection("History") {
+                Tab("Recent", systemImage: "clock") {
+                    historyView
+                }
+            }
+            .defaultVisibility(.hidden, for: .tabBar)
+            
+            TabSection("Settings") {
+                Tab("Settings", systemImage: "gearshape") {
+                    settingsView
+                }
+            }
+            .defaultVisibility(.hidden, for: .tabBar)
         }
-        .navigationBarHidden(true)
+        .tabViewStyle(.sidebarAdaptable)
+        .onAppear {
+            if chatSessions.isEmpty {
+                let newSession = ChatSession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                chatSessions.insert(newSession, at: 0)
+                selectedSessionID = newSession.id
+                vm.messages = []
+                vm.input = ""
+            }
+        }
+        .onChange(of: selectedSessionID) { newValue in
+            guard let sessionID = newValue,
+                  let session = chatSessions.first(where: { $0.id == sessionID }) else {
+                vm.messages = []
+                vm.input = ""
+                return
+            }
+            vm.messages = session.messages
+            selectedModel = session.model
+        }
+    }
+    
+    // MARK: - Home View (Chat Interface)
+    private var homeView: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 16) {
+                Button(action: {
+                    // 3. Append new session and select it
+                    let newSession = ChatSession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                    chatSessions.insert(newSession, at: 0)
+                    selectedSessionID = newSession.id
+                    vm.messages = []
+                    vm.input = ""
+                }) {
+                    Label("New Chat", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                
+                Picker("Model", selection: boundModel) {
+                    Text("Gemma").tag("Gemma")
+                    Text("Phi-3").tag("Phi-3")
+                    Text("Mistral").tag("Mistral")
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 180)
+            }
+            .padding([.top, .horizontal])
+            
+            if vm.messages.isEmpty {
+                welcomeView
+            } else {
+                messagesView
+            }
+            inputView
+        }
+        .id(selectedSessionID ?? UUID())
+        .navigationTitle("Chat")
+        .onChange(of: vm.messages) { newMessages in
+            // 4. Update current session's messages when vm.messages changes (e.g. after sending)
+            guard let sessionID = selectedSessionID,
+                  let index = chatSessions.firstIndex(where: { $0.id == sessionID }) else {
+                return
+            }
+            chatSessions[index].messages = newMessages
+        }
+        
+    }
+    
+    private var welcomeView: some View {
+        VStack(spacing: 32) {
+            Spacer()
+            VStack(spacing: 16) {
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .font(.system(size: 60))
+                    .foregroundColor(.blue)
+                Text("Welcome to AVELA AI")
+                    .font(.largeTitle.bold())
+                Text("Ready to learn about data activism?")
+                    .font(.title3)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                
+                VStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        ForEach(suggestedQuestions.prefix(3), id: \.self) { question in
+                            Button(action: {
+                                vm.input = question
+                                vm.send()
+                            }) {
+                                Text(question)
+                                    .font(.callout)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 14)
+                                    .background(RoundedRectangle(cornerRadius: 30).fill(Color.accentColor))
+                            }
+                            .accessibilityLabel(question)
+                        }
+                    }
+                    HStack(spacing: 12) {
+                        ForEach(suggestedQuestions.suffix(2), id: \.self) { question in
+                            Button(action: {
+                                vm.input = question
+                                vm.send()
+                            }) {
+                                Text(question)
+                                    .font(.callout)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 14)
+                                    .background(RoundedRectangle(cornerRadius: 30).fill(Color.accentColor))
+                            }
+                            .accessibilityLabel(question)
+                        }
+                    }
+                }
+                .padding(.vertical)
+            }
+            Spacer()
+        }
+        .padding()
+    }
+    
+    private var messagesView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(Array(vm.messages.enumerated()), id: \.offset) { index, message in
+                        MessageBubble(message: message)
+                            .id(index)
+                    }
+                }
+                .padding()
+            }
+            .onChange(of: vm.messages.count) { _ in
+                if let lastIndex = vm.messages.indices.last {
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        proxy.scrollTo(lastIndex, anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+    
+    private var inputView: some View {
+        ZStack {
+            VStack(spacing: 0) {
+                Divider()
+                HStack(spacing: 12) {
+                    TextField("Type a message...", text: $vm.input, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(1...4)
+                    Button("Send") {
+                        vm.send()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vm.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                .padding()
+            }
+#if os(macOS)
+            .background(Color(NSColor.controlBackgroundColor))
+#else
+            .background(Color(.systemBackground))
+#endif
+            // Gradient overlay for 'response is being generated'
+            if !vm.isReady {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.blue.opacity(0.7), Color.purple.opacity(0.7), Color.indigo.opacity(0.7)]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .animation(.easeInOut(duration: 0.3), value: !vm.isReady)
+                    .transition(.opacity)
+                    .padding(4)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 8)
+        .animation(.easeInOut(duration: 0.3), value: !vm.isReady)
+    }
+    
+    // MARK: - History View
+    private var historyView: some View {
+        NavigationStack {
+            List {
+                VStack(alignment: .leading, spacing: 12) {
+                    Button(action: {
+                        // 3. Append new session and select it
+                        let newSession = ChatSession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                        chatSessions.insert(newSession, at: 0)
+                        selectedSessionID = newSession.id
+                        vm.messages = []
+                        vm.input = ""
+                    }) {
+                        Label("New Chat", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Picker("Model", selection: $historyFilterModel) {
+                        Text("Gemma").tag("Gemma")
+                        Text("Phi-3").tag("Phi-3")
+                        Text("Mistral").tag("Mistral")
+                    }
+                    .pickerStyle(.segmented)
+                }
+                .padding([.top, .horizontal])
+                
+                // Show only conversations matching the selected model
+                Section(header: Text("\(historyFilterModel)")) {
+                    ForEach(chatSessions.filter { $0.model == historyFilterModel }.prefix(5)) { session in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Button {
+                                selectedSessionID = session.id
+                                vm.messages = session.messages
+                                selectedModel = session.model
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Conversation \(session.id.uuidString.prefix(5))")
+                                        .font(.headline)
+                                    if let lastMessage = session.messages.last {
+                                        Text(lastMessage)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                    } else {
+                                        Text("No messages yet")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Text(session.created, style: .relative)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+                /*
+                // 7. Remove older conversations for now
+                Section("Older Conversations") {
+                    ForEach(5..<10, id: \.self) { index in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Conversation \(index + 1)")
+                                .font(.headline)
+                            Text("Python and data analysis...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("\(index - 4) days ago")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+                */
+            }
+            .navigationTitle("History")
+        }
+    }
+    
+    // MARK: - Settings View
+    private var settingsView: some View {
+        NavigationStack {
+            Form {
+                Section("Appearance") {
+                    HStack {
+                        Label("Theme", systemImage: "paintbrush")
+                        Spacer()
+                        Text("System").foregroundColor(.secondary)
+                    }
+                    HStack {
+                        Label("Text Size", systemImage: "textformat.size")
+                        Spacer()
+                        Text("Medium").foregroundColor(.secondary)
+                    }
+                }
+                Section("Behavior") {
+                    HStack {
+                        Label("Auto-send on Return", systemImage: "return")
+                        Spacer()
+                        Toggle("", isOn: .constant(false))
+                    }
+                    HStack {
+                        Label("Save History", systemImage: "externaldrive")
+                        Spacer()
+                        Toggle("", isOn: .constant(true))
+                    }
+                    HStack {
+                        Label("Smart Suggestions", systemImage: "lightbulb")
+                        Spacer()
+                        Toggle("", isOn: .constant(true))
+                    }
+                }
+                Section("Privacy") {
+                    HStack {
+                        Label("Analytics", systemImage: "chart.bar")
+                        Spacer()
+                        Toggle("", isOn: .constant(false))
+                    }
+                    Button {
+                        // Clear history action
+                    } label: {
+                        Label("Clear All History", systemImage: "trash")
+                            .foregroundColor(.red)
+                    }
+                }
+                Section("About") {
+                    HStack {
+                        Label("Version", systemImage: "info.circle")
+                        Spacer()
+                        Text("2.0.1").foregroundColor(.secondary)
+                    }
+                    HStack {
+                        Label("Build", systemImage: "hammer")
+                        Spacer()
+                        Text("2024.08.08").foregroundColor(.secondary)
+                    }
+                    Button {
+                        // Show licenses
+                    } label: {
+                        Label("Open Source Licenses", systemImage: "doc.text")
+                    }
+                }
+            }
+            .navigationTitle("Settings")
+        }
+    }
+}
+
+// Message bubble component
+struct MessageBubble: View {
+    let message: String
+    
+    private var isUser: Bool {
+        message.starts(with: "You:")
+    }
+    
+    private var displayText: String {
+        if isUser {
+            return String(message.dropFirst(4))
+        } else if message.starts(with: "Bot:") {
+            return String(message.dropFirst(4))
+        }
+        return message
+    }
+    
+    var body: some View {
+        HStack {
+            if isUser {
+                Spacer(minLength: 60)
+            }
+            
+            Text(displayText)
+                .font(.body)
+                .foregroundColor(isUser ? .white : .primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(isUser ? Color.blue : Color.gray.opacity(0.2))
+                )
+            
+            if !isUser {
+                Spacer(minLength: 60)
+            }
+        }
     }
 }
 
