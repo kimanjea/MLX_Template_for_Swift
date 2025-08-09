@@ -337,70 +337,144 @@ struct ContentView: View {
     
     // MARK: - Settings View
     private var settingsView: some View {
-        NavigationStack {
-            Form {
-                Section("Appearance") {
-                    HStack {
-                        Label("Theme", systemImage: "paintbrush")
-                        Spacer()
-                        Text("System").foregroundColor(.secondary)
-                    }
-                    HStack {
-                        Label("Text Size", systemImage: "textformat.size")
-                        Spacer()
-                        Text("Medium").foregroundColor(.secondary)
-                    }
+    #if os(macOS)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                // Appearance Section
+                Text("Appearance").font(.title3.bold()).padding(.bottom, 6)
+                HStack {
+                    Label("Theme", systemImage: "paintbrush")
+                    Spacer()
+                    Text("System").foregroundColor(.secondary)
                 }
-                Section("Behavior") {
-                    HStack {
-                        Label("Auto-send on Return", systemImage: "return")
-                        Spacer()
-                        Toggle("", isOn: .constant(false))
-                    }
-                    HStack {
-                        Label("Save History", systemImage: "externaldrive")
-                        Spacer()
-                        Toggle("", isOn: .constant(true))
-                    }
-                    HStack {
-                        Label("Smart Suggestions", systemImage: "lightbulb")
-                        Spacer()
-                        Toggle("", isOn: .constant(true))
-                    }
+                HStack {
+                    Label("Text Size", systemImage: "textformat.size")
+                    Spacer()
+                    Text("Medium").foregroundColor(.secondary)
                 }
-                Section("Privacy") {
-                    HStack {
-                        Label("Analytics", systemImage: "chart.bar")
-                        Spacer()
-                        Toggle("", isOn: .constant(false))
-                    }
-                    Button {
-                        // Clear history action
-                    } label: {
-                        Label("Clear All History", systemImage: "trash")
-                            .foregroundColor(.red)
-                    }
+                Divider()
+
+                // Behavior Section
+                Text("Behavior").font(.title3.bold()).padding(.bottom, 6)
+                HStack {
+                    Label("Auto-send on Return", systemImage: "return")
+                    Spacer()
+                    Toggle("", isOn: .constant(false))
                 }
-                Section("About") {
-                    HStack {
-                        Label("Version", systemImage: "info.circle")
-                        Spacer()
-                        Text("2.0.1").foregroundColor(.secondary)
-                    }
-                    HStack {
-                        Label("Build", systemImage: "hammer")
-                        Spacer()
-                        Text("2024.08.08").foregroundColor(.secondary)
-                    }
-                    Button {
-                        // Show licenses
-                    } label: {
-                        Label("Open Source Licenses", systemImage: "doc.text")
-                    }
+                HStack {
+                    Label("Save History", systemImage: "externaldrive")
+                    Spacer()
+                    Toggle("", isOn: .constant(true))
+                }
+                HStack {
+                    Label("Smart Suggestions", systemImage: "lightbulb")
+                    Spacer()
+                    Toggle("", isOn: .constant(true))
+                }
+                Divider()
+
+                // Privacy Section
+                Text("Privacy").font(.title3.bold()).padding(.bottom, 6)
+                HStack {
+                    Label("Analytics", systemImage: "chart.bar")
+                    Spacer()
+                    Toggle("", isOn: .constant(false))
+                }
+                Button(role: .destructive) {
+                    // Clear history action
+                } label: {
+                    Label("Clear All History", systemImage: "trash")
+                }
+                Divider()
+
+                // About Section
+                Text("About").font(.title3.bold()).padding(.bottom, 6)
+                HStack {
+                    Label("Version", systemImage: "info.circle")
+                    Spacer()
+                    Text("2.0.1").foregroundColor(.secondary)
+                }
+                HStack {
+                    Label("Build", systemImage: "hammer")
+                    Spacer()
+                    Text("2024.08.08").foregroundColor(.secondary)
+                }
+                Button {
+                    // Show licenses
+                } label: {
+                    Label("Open Source Licenses", systemImage: "doc.text")
+                }
+
+            }
+            .padding(32)
+            .frame(maxWidth: 500)
+        }
+        .navigationTitle("Settings")
+    #else
+        // iPad/iOS
+        Form {
+            Section("Appearance") {
+                HStack {
+                    Label("Theme", systemImage: "paintbrush")
+                    Spacer()
+                    Text("System").foregroundColor(.secondary)
+                }
+                HStack {
+                    Label("Text Size", systemImage: "textformat.size")
+                    Spacer()
+                    Text("Medium").foregroundColor(.secondary)
                 }
             }
-            .navigationTitle("Settings")
+            Section("Behavior") {
+                HStack {
+                    Label("Auto-send on Return", systemImage: "return")
+                    Spacer()
+                    Toggle("", isOn: .constant(false))
+                }
+                HStack {
+                    Label("Save History", systemImage: "externaldrive")
+                    Spacer()
+                    Toggle("", isOn: .constant(true))
+                }
+                HStack {
+                    Label("Smart Suggestions", systemImage: "lightbulb")
+                    Spacer()
+                    Toggle("", isOn: .constant(true))
+                }
+            }
+            Section("Privacy") {
+                HStack {
+                    Label("Analytics", systemImage: "chart.bar")
+                    Spacer()
+                    Toggle("", isOn: .constant(false))
+                }
+                Button {
+                    // Clear history action
+                } label: {
+                    Label("Clear All History", systemImage: "trash")
+                        .foregroundColor(.red)
+                }
+            }
+            Section("About") {
+                HStack {
+                    Label("Version", systemImage: "info.circle")
+                    Spacer()
+                    Text("2.0.1").foregroundColor(.secondary)
+                }
+                HStack {
+                    Label("Build", systemImage: "hammer")
+                    Spacer()
+                    Text("2024.08.08").foregroundColor(.secondary)
+                }
+                Button {
+                    // Show licenses
+                } label: {
+                    Label("Open Source Licenses", systemImage: "doc.text")
+                }
+            }
         }
+        .navigationTitle("Settings")
+    #endif
     }
 }
 
