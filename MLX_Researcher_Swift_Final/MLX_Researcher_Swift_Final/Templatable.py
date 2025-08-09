@@ -22,7 +22,8 @@ import textwrap
 import sys
 import os
 from typing import List
-
+import csv
+from datetime import datetime
 
 pdf_path = "Final_Activity.pdf"
 
@@ -97,10 +98,25 @@ def classify(text):
 
 max_tokens = 1000
 
+
+# Path to your conversation CSV log
+csv_log_path = os.path.join(BASE_DIR, "conversation_log.csv")
+
+
+def log_conversation(question, response, topic):
+    file_exists = os.path.isfile(csv_log_path)
+    with open(csv_log_path, mode='a', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        if not file_exists:
+            writer.writerow(['user', 'assistant', 'topic', 'timestamp'])  # Header
+        timestamp = datetime.now().isoformat()
+        writer.writerow([question, response, topic, timestamp])
+
 def ask(question: str) -> str:
     if(question):
         if(classify(question)=="on-topic"):
             print("on-topic")
+            topic = "on-topic"
             if question:
                 context_chunks = retrieve_context(question, docs, embeddings, embedder)
                 context_text = "\n".join(context_chunks)
@@ -145,10 +161,12 @@ def ask(question: str) -> str:
                 )
                     
                 save_prompt_cache(cache_file, prompt_cache)
+                log_conversation(question, response, topic)
                 return response
             
         else:
                 print("off-topic")
+                topic = "off-topic"
                 tokenizer.add_special_tokens({
                     "additional_special_tokens": ["<|im_start|>", "<|im_end|>"]
                 })
@@ -183,7 +201,7 @@ def ask(question: str) -> str:
                     prompt_cache=prompt_cache,
                     max_tokens=max_tokens,
                 )
-                    
+                log_conversation(question, response, topic)
                 return response
 
 
