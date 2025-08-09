@@ -217,7 +217,6 @@ struct ContentView: View {
             .padding(.horizontal, 40)
             .padding(.vertical, 30)
         }
-        .navigationBarHidden(true)
     }
 }
 
