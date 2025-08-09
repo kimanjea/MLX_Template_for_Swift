@@ -1,5 +1,3 @@
-
-
 from mlx_lm import load, generate
 import pdfplumber
 from sentence_transformers import SentenceTransformer
@@ -22,8 +20,13 @@ import textwrap
 import sys
 import os
 from typing import List
+from openai import OpenAI
 
-pdf_path = "Data_Activisim_Piechart_Activity.pdf"
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+In_chat_history = []
+
+pdf_path = "Final_Activity.pdf"
 
 text_chunks = []
 with pdfplumber.open(pdf_path) as pdf:
@@ -62,16 +65,18 @@ def retrieve_context(question, docs, embeddings, embedder, top_k=1):
     return [docs[i].page_content for i in top_k_idx]
 
 
-model, tokenizer = load ("google/gemma-3-1b-it")
+#model, tokenizer = load ("ShukraJaliya/BLUECOMPUTER.2")
+#tokenizer = AutoTokenizer.from_pretrained(
+#    "ShukraJaliya/BLUECOMPUTER.2",
+#    trust_remote_code=True,
+#)
 
 BASE_DIR = os.path.dirname(__file__)
-cache_file = os.path.join(BASE_DIR, "mistral_prompt.safetensors")
-if os.path.exists(cache_file):
-    prompt_cache = load_prompt_cache(cache_file)
-else:
-    prompt_cache = make_prompt_cache(model)
-
-#question = f""" how can i make a data visualization """
+#cache_file = os.path.join(BASE_DIR, "mistral_prompt.safetensors")
+#if os.path.exists(cache_file):
+#    prompt_cache = load_prompt_cache(cache_file)
+#else:
+#    prompt_cache = make_prompt_cache(model)
 
 
 classifier_model_path = os.path.join(BASE_DIR, "data_activism_classifier")
@@ -93,94 +98,66 @@ def classify(text):
 
 
 def ask(question: str) -> str:
-    if(question):
-        if(classify(question)=="on-topic"):
+    if question:
+        In_chat_history.append({"role": "user", "content": question})
+        if classify(question) == "on-topic":
             print("on-topic")
-            if question:
-                context_chunks = retrieve_context(question, docs, embeddings, embedder)
-                context_text = "\n".join(context_chunks)
+            context_chunks = retrieve_context(question, docs, embeddings, embedder)
+            context_text = "\n".join(context_chunks)
+            print(context_text)
 
-                messages = [
+            messages = In_chat_history + [
+                    {
+                    "role": "system",
+                    "content": (
+                        "You are an expert who only teaches data activism and Python programming to K–12 students. "
+                        "You explain concepts step by step using clear, scaffolded language.\n"
+                        "You never provide exact code solutions.\n"
+                        "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps.\n"
+                        "For general programming questions (like 'What is a function?'), give a full explanation with a short example, but do not solve specific problems.\n"
+                        "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"
+                    )
+                },
                 {
                     "role": "user",
-                    "content": f"""You are an expert data activism and programming tutor for high school students.
+                    "content": (
+                        f"Here is the context:\n\n{context_text}\n\n Answer the task: {question}"
+                    )
+                }
+            ]
 
-                    Your role is to provide step-by-step hints to guide students in completing coding and data visualization tasks. You do not write full solutions or complete the code for them. Instead, you offer clear, concise, and detailed hints for only the next step they should take, focusing on replacing any placeholder question marks (?) in their code.
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                store=True,
+            )
+            reply_text = response.choices[0].message.content
+            In_chat_history.append({"role": "assistant", "content": reply_text})
+            return reply_text
 
-                    Always ensure:
-                    - Your responses are limited to topics related to data activism, coding, and data visualization.
-                    - You avoid answering any questions unrelated to these topics.
-                    - Your hints are detailed enough for the student to take confident action but never include the full solution.
-                    - If a student asks about definitions or programming concepts related to data activism, provide direct and clear explanations.
-                    - Encourage students to ask more specific questions about data activism if they ask general or unrelated questions.
-                    Respond using no more than 5 clear and precise sentences per hint. Do not include any code snippets, code blocks, or print statements in your response unless explicitly asked for code.
-
-                    Context:
-                    {context_text}
-
-                    Task:
-                    Question: {question}"""
-                        }
-                    ]
-
-                prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-
-                ###########################################
-                # STEP 7: Generate response using MLX
-                ###########################################
-
-
-                response_text = ""
-                for response in stream_generate(
-                    model,
-                    tokenizer,
-                    prompt,
-                    max_tokens=1024,
-                    #sampler=make_sampler(temp=0.0, top_p=1.0),
-                    prompt_cache=prompt_cache
-                ):
-                    response_text += response.text
-                save_prompt_cache(cache_file, prompt_cache)
-                return response_text
-            
         else:
-                print("off-topic")
-                messages = [
+            print("off-topic")
+            
+            messages = In_chat_history + [
                 {
-                    "role": "user",
-                    "content": f"""You are an expert data‑activism and programming tutor for high‑school students.
-                        You only discuss coding, data visualization and other topics directly related to data activism.
-                        If the student asks anything off topic, respond in exactly two sentences:
-                        1) remind them that we’re focusing on data‑activism tasks;
-                        2) invite them to ask a new question about data activism.
-                        Use the conversation history to guide the student back to asking questions more on topic questions as they previously talked about.
-                    Task:
-                    Question: {"student just asked an off topic question, guide them back to data activism?"}"""
-                        }
-                    ]
+                        "role": "system",
+                        "content": (
+                            "You are an expert in data activism and Python programming for K–12 students.\n"
+                    "If a student asks something off-topic or requests unrelated content, politely redirect them back to data activism or Python by asking:\n"
+                    "When you redirect or answer follow-ups, keep your response to two concise sentences.\n"
+                    "Explain the answer using the chat history to tie back their questions."
+                        ),
+                    },
+                    {"role": "user",
+                    "content": (
+                    f"Student just asked an off-topic question here: {question}. Guide the student back on the topic of data activism using the system instructions and the on-topic conversation history"
+                    )}
+            ]
 
-                prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-
-                ###########################################
-                # STEP 7: Generate response using MLX
-                ###########################################
-
-
-                response_text = ""
-                for response in stream_generate(
-                    model,
-                    tokenizer,
-                    prompt,
-                    max_tokens=1024,
-                    prompt_cache=prompt_cache
-                    #sampler=make_sampler(temp=0.0, top_p=1.0),
-                    #prompt_cache=prompt_cache,
-                ):
-                    response_text += response.text
-                return response_text
-
-
-
-
-
-
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                store=True,
+            )
+            reply_text = response.choices[0].message.content
+            return reply_text
