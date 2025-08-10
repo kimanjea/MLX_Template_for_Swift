@@ -47,18 +47,18 @@ A SwiftUI chat client paired with a Python FastAPI + MLX backend for interactive
 ## How to launch the study repo for the AVELA AI app for the experience!
 
 
-**Clone Main: https://github.com/kimanjea/MLX_Template_for_Swift.git**
+**1. Clone Main: https://github.com/kimanjea/MLX_Template_for_Swift.git**
 
 
-**Download Data Activism Classifier: # {only research group has access to this one, replace with your own}**
+**2. Download Data Activism Classifier: # {only research group has access to this one, replace with your own}**
 
 Place Data Activism Classifier under MLX_Researcher_Swift_Final in the specified hierarchy in 
 ...../Documents/Github/MLX_Template_for_Swift/MLX_Researcher_Swift_Final
 
 
-**Delete MistralSafetensors file if it exists in that folder**
+**3. Delete MistralSafetensors file if it exists in that folder**
 
-**Before running anything Make Sure you have Python3.11 installed. If you do not, run this line by line in your main terminal**
+**4. Before running anything Make Sure you have Python3.11 installed. If you do not, run this line by line in your main terminal**
 
 Commands:
 
@@ -67,7 +67,7 @@ echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
 eval "$(/opt/homebrew/bin/brew shellenv)"
 brew install python@3.11
 
-**Before server start run this in your terminal at this folder**
+**5. Before server start run this in your terminal at this folder**
 
 ...../Documents/Github/MLX_Template_for_Swift/MLX_Researcher_Swift_Final
 
@@ -87,7 +87,7 @@ python3.11 -m  pip install uvicorn
 Python3.11 -m pip install openai
 
 
-**Before starting the Server run this in the same folder (run this everytime you switch branches)**
+**6. Before starting the Server run this in the same folder (run this everytime you switch branches)**
 
 Commands: 
 
@@ -95,14 +95,14 @@ export OPENAI_API_KEY=## {replace with actual tokens before running}
 
 export HUGGINGFACE_HUB_TOKEN=##
 
-**Server starter at this folder** 
+**7. Server starter at this folder** 
 ...../Documents/Github/MLX_Template_for_Swift/MLX_Researcher_Swift_Final
 
 Commands: uvicorn server:app --reload --host 0.0.0.0 --port 8000
 
-**Login Xcode using apple ID under build rules teams if you have not already** 
+**8. Login Xcode using apple ID under build rules teams if you have not already** 
 
-**Run your Xcode App to begin using the AVELA AI app**
+**9. Run your Xcode App to begin using the AVELA AI app**
 
 
 ## NB:
