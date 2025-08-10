@@ -113,96 +113,51 @@ def log_conversation(question, response, topic):
         writer.writerow([question, response, topic, timestamp])
 
 def ask(question: str) -> str:
-    if(question):
-        if(classify(question)=="on-topic"):
-            print("on-topic")
-            topic = "on-topic"
-            if question:
-                context_chunks = retrieve_context(question, docs, embeddings, embedder)
-                context_text = "\n".join(context_chunks)
-                print(context_text)
-                
-                tokenizer.add_special_tokens({
-                    "additional_special_tokens": ["<|im_start|>", "<|im_end|>"]
-                })
-                
-                messages = [
-                    {
-                        "role": "system",
-                        "content": (
-                            """You are an expert who only teaches data activism and Python programming to K–12 students. "
-                            You explain concepts step by step using clear, scaffolded language.
-                            You never provide exact code solutions.
-                            If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps.
-                            For general programming questions (like \"What is a function?\"), give a full explanation with a short example, but do not solve specific problems.
-                            If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"""
-                        )
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Here is the context:\n\n{context_text}\n\n Answer the task: {question}"
-                    }
-                ]
+    if not question:
+        return "Please provide a question."
+    is_scaffold = "?" in question and ("df[" in question or "groupby" in question)
+    is_on_topic = classify(question) == "on-topic"
+    if is_on_topic:
+        print("on-topic")
+        topic = "on-topic"
+        context_chunks = retrieve_context(question, docs, embeddings, embedder)
+        if not is_scaffold:
+            # For non-scaffold questions, remove any chunks with '?'
+            context_chunks = [c for c in context_chunks if "?" not in c]
+        context_text = "\n".join(context_chunks)
+    else:
+        print("off-topic")
+        topic = "off-topic"
+        context_text = ""
+    # ✅ Write prompt in your fine-tuning format directly
+    prompt = (
+        f"<|im_start|>system\n"
+        "You are an expert who only teaches data activism and Python programming to K–12 students. "
+        "You explain concepts step by step using clear, scaffolded language. "
+        "You never provide exact code solutions. "
+        "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. "
+        "For general programming questions (like \"What is a function?\"), give a full explanation with a short example, but do not solve specific problems. "
+        "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"
+        f"Context:\n{context_text}\n"
+        f"<|im_end|>\n"
+        f"<|im_start|>user\n{question}\n<|im_end|>\n"
+        f"<|im_start|>assistant\n"
+    )
+    # ✅ Stream the response
+    response_text = ""
+    for response in stream_generate(
+        model,
+        tokenizer,
+        prompt,
+        max_tokens=150,
+        prompt_cache=None,
+    ):
+        response_text += response.text
+    save_prompt_cache(cache_file, prompt_cache)
+    log_conversation(question, response_text, topic)
+    return response_text
 
 
-                prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-
-                ###########################################
-                # STEP 7: Generate response using MLX
-                ###########################################
-                
-                response = generate(
-                    model,
-                    tokenizer,
-                    prompt=prompt,
-                    verbose=True,
-                    prompt_cache=prompt_cache,
-                    max_tokens=max_tokens,
-                )
-                    
-                save_prompt_cache(cache_file, prompt_cache)
-                log_conversation(question, response, topic)
-                return response
-            
-        else:
-                print("off-topic")
-                topic = "off-topic"
-                tokenizer.add_special_tokens({
-                    "additional_special_tokens": ["<|im_start|>", "<|im_end|>"]
-                })
-                
-                messages = [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are an expert in data activism and Python programming for K–12 students.\n"
-                    "If a student asks something off-topic or requests unrelated content, politely redirect them back to data activism or Python by asking:\n"
-                    "When you redirect or answer follow-ups, keep your response to two concise sentences.\n"
-                    "Explain the answer using the chat history to tie back their questions."
-                        ),
-                    },
-                    {"role": "user",
-                    "content": (
-                    f"Student just asked an off-topic question here: {question}. Guide the student back on the topic of data activism using the system instructions and the on-topic conversation history"
-                    )}
-                ]
-
-                prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-
-                ###########################################
-                # STEP 7: Generate response using MLX
-                ###########################################
-                
-                response = generate(
-                    model,
-                    tokenizer,
-                    prompt=prompt,
-                    verbose=True,
-                    prompt_cache=prompt_cache,
-                    max_tokens=max_tokens,
-                )
-                log_conversation(question, response, topic)
-                return response
 
 
 
