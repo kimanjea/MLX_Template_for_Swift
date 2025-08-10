@@ -146,7 +146,15 @@ Start the FastAPI app with Uvicorn:
 uvicorn server:app --reload --host 0.0.0.0 --port 8000 
 ```
 
-* **`/ask`**: Accepts `POST` JSON `{ "question": "..." }`, returns `{ "answer": "..." }`.
+## Make sure: NB:
+Make sure to delete Mistral.safetensors from the folder before you run the app for a conversation for the first time.
+Make sure to delete conversations_log csv from folder so that it can track most recent conversation and turns
+Make sure you have a data_activism_classfier within the right directory as mentioned in the instructionsand also it has to include the configs and safetensor files.
+Make sure your Xcode app has read and write permission in the sandbox settings
+Make sure your xcode app is allowed to make server calls in App Transport Security Settings
+Make sure your xcode app has schemes with the tokens about laid out
+Make sure your xcode app has MLX and MLXLM frameworks in the Target settings
+Make sure you have all installations of python3.11
 
 ## Running the iOS/macOS App
 
