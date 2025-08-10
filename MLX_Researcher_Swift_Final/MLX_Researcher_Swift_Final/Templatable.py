@@ -25,7 +25,7 @@ from typing import List
 import csv
 from datetime import datetime
 
-pdf_path = "Final_Activity.pdf"
+pdf_path = "Final_Activity_v1.pdf"
 
 text_chunks = []
 with pdfplumber.open(pdf_path) as pdf:
