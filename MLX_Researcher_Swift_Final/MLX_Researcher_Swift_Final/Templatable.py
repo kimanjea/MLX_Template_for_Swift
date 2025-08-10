@@ -149,8 +149,8 @@ def ask(question: str) -> str:
         model,
         tokenizer,
         prompt,
-        max_tokens=150,
-        prompt_cache=None,
+        max_tokens=1024,
+        prompt_cache=prompt_cache,
     ):
         response_text += response.text
     save_prompt_cache(cache_file, prompt_cache)
