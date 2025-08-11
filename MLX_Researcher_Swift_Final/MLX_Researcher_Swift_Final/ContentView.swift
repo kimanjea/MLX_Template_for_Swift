@@ -207,8 +207,12 @@ struct ContentView: View {
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 18)
                                     .padding(.vertical, 14)
-                                    .background(RoundedRectangle(cornerRadius: 30).fill(welcomeColors[index % welcomeColors.count]))
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 30)
+                                            .fill(welcomeColors[index % welcomeColors.count])
+                                    )
                             }
+                            .buttonStyle(.plain) // ✅ Removes extra rectangle
                             .accessibilityLabel(question)
                         }
                     }
@@ -223,8 +227,12 @@ struct ContentView: View {
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 18)
                                     .padding(.vertical, 14)
-                                    .background(RoundedRectangle(cornerRadius: 30).fill(welcomeColors[(index + 3) % welcomeColors.count]))
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 30)
+                                            .fill(welcomeColors[(index + 3) % welcomeColors.count])
+                                    )
                             }
+                            .buttonStyle(.plain) // ✅ Removes extra rectangle
                             .accessibilityLabel(question)
                         }
                     }
@@ -235,6 +243,7 @@ struct ContentView: View {
         }
         .padding()
     }
+
     
     private var messagesView: some View {
         ScrollViewReader { proxy in
