@@ -153,6 +153,7 @@ struct ContentView: View {
                     Label("New Chat", systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
+                .clipShape(RoundedRectangle(cornerRadius: 30))
                 
                 Picker("Model", selection: boundModel) {
                     Text("Gemma").tag("Gemma")
@@ -278,6 +279,7 @@ struct ContentView: View {
                         vm.send()
                     }
                     .buttonStyle(.borderedProminent)
+                    .clipShape(RoundedRectangle(cornerRadius: 30))
                     .disabled(vm.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 .padding()
@@ -324,6 +326,7 @@ struct ContentView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
+                    .clipShape(RoundedRectangle(cornerRadius: 30))
                     
                     Picker("Model", selection: $historyFilterModel) {
                         Text("Gemma").tag("Gemma")
@@ -438,6 +441,7 @@ struct ContentView: View {
                     // Clear history action
                 } label: {
                     Label("Clear All History", systemImage: "trash")
+                        .clipShape(RoundedRectangle(cornerRadius: 30))
                 }
                 Divider()
 
@@ -507,6 +511,7 @@ struct ContentView: View {
                 } label: {
                     Label("Clear All History", systemImage: "trash")
                         .foregroundColor(.red)
+                        .clipShape(RoundedRectangle(cornerRadius: 30))
                 }
             }
             Section("About") {
@@ -594,3 +599,4 @@ struct MLX_templateApp: App {
         }
     }
 }
+
