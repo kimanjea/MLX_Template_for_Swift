@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 extension Color {
     init(hex: String) {
@@ -41,6 +42,10 @@ struct ContentView: View {
     @State private var chatSessions: [ChatSession] = []
     @State private var selectedSessionID: UUID? = nil
     @State private var historyFilterModel: String = "Gemma"
+    
+    // Added state for thinking timer
+    @State private var thinkingStartDate: Date? = nil
+    @State private var thinkingElapsed: Int = 0
     
     private let suggestedQuestions = [
         "What is data activism?",
@@ -129,6 +134,14 @@ struct ContentView: View {
             }
             vm.messages = session.messages
             selectedModel = session.model
+        }
+        .onChange(of: vm.isReady) { newValue in
+            if newValue == false {
+                thinkingStartDate = Date()
+            } else {
+                thinkingStartDate = nil
+                thinkingElapsed = 0
+            }
         }
     }
     
@@ -276,38 +289,40 @@ struct ContentView: View {
                     TextField("Type a message...", text: $vm.input, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(1...4)
+                        .disabled(!vm.isReady)
                     Button("Send") {
                         vm.send()
                     }
                     .buttonStyle(.borderedProminent)
                     .clipShape(RoundedRectangle(cornerRadius: 30))
-                    .disabled(vm.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(vm.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !vm.isReady)
                 }
                 .padding()
+                
+                if !vm.isReady {
+                    Text("Thinking for \(thinkingElapsed) second(s)...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal)
+                        .padding(.bottom, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
 #if os(macOS)
             .background(Color(NSColor.controlBackgroundColor))
 #else
             .background(Color(.systemBackground))
 #endif
-            // Gradient overlay for 'response is being generated'
-            if !vm.isReady {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.blue.opacity(0.7), Color.purple.opacity(0.7), Color.indigo.opacity(0.7)]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .animation(.easeInOut(duration: 0.3), value: !vm.isReady)
-                    .transition(.opacity)
-                    .padding(4)
-            }
         }
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 8)
-        .animation(.easeInOut(duration: 0.3), value: !vm.isReady)
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            if let start = thinkingStartDate, !vm.isReady {
+                thinkingElapsed = Int(Date().timeIntervalSince(start))
+            } else {
+                thinkingElapsed = 0
+            }
+        }
     }
     
     // MARK: - History View
@@ -600,4 +615,3 @@ struct MLX_templateApp: App {
         }
     }
 }
-
