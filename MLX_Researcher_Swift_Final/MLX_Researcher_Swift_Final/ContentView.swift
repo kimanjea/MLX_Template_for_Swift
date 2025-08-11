@@ -1,4 +1,31 @@
 import SwiftUI
+import Combine
+
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
+    }
+}
 
 // 1. Add a struct for a chat session at the top (for demo purposes).
 struct ChatSession: Identifiable {
@@ -16,12 +43,32 @@ struct ContentView: View {
     @State private var selectedSessionID: UUID? = nil
     @State private var historyFilterModel: String = "Gemma"
     
+    // Added state for thinking timer
+    @State private var thinkingStartDate: Date? = nil
+    @State private var thinkingElapsed: Int = 0
+    
     private let suggestedQuestions = [
         "What is data activism?",
         "What is a variable?",
         "What is Python?",
         "What is a function?",
         "Examples of Data Activism"
+    ]
+    
+    private let welcomeColors: [Color] = [
+        Color(hex: "#DE0058"),
+        Color(hex: "#00B500"),
+        Color(hex: "#EDC300"),
+        Color(hex: "#1266E2"),
+        Color(hex: "#663887")
+    ]
+    
+    private let chatColors: [Color] = [
+        Color(hex: "#DE0058"),
+        Color(hex: "#00B500"),
+        Color(hex: "#EDC300"),
+        Color(hex: "#1266E2"),
+        Color(hex: "#663887")
     ]
     
     private var boundModel: Binding<String> {
@@ -88,11 +135,26 @@ struct ContentView: View {
             vm.messages = session.messages
             selectedModel = session.model
         }
+        .onChange(of: vm.isReady) { newValue in
+            if newValue == false {
+                thinkingStartDate = Date()
+            } else {
+                thinkingStartDate = nil
+                thinkingElapsed = 0
+            }
+        }
     }
     
     // MARK: - Home View (Chat Interface)
     private var homeView: some View {
         VStack(spacing: 0) {
+            Image("Logo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 84, height: 84)
+                .shadow(radius: 8)
+                .padding(.top, 24)
+            
             HStack(spacing: 16) {
                 Button(action: {
                     // 3. Append new session and select it
@@ -105,6 +167,7 @@ struct ContentView: View {
                     Label("New Chat", systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
+                .clipShape(RoundedRectangle(cornerRadius: 30))
                 
                 Picker("Model", selection: boundModel) {
                     Text("Gemma").tag("Gemma")
@@ -140,19 +203,16 @@ struct ContentView: View {
         VStack(spacing: 32) {
             Spacer()
             VStack(spacing: 16) {
-                Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.system(size: 60))
-                    .foregroundColor(.blue)
                 Text("Welcome to AVELA AI")
                     .font(.largeTitle.bold())
-                Text("Ready to learn about data activism?")
+                Text("Click to learn about data activism.")
                     .font(.title3)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                 
                 VStack(spacing: 12) {
                     HStack(spacing: 12) {
-                        ForEach(suggestedQuestions.prefix(3), id: \.self) { question in
+                        ForEach(Array(suggestedQuestions.prefix(3).enumerated()), id: \.element) { (index, question) in
                             Button(action: {
                                 vm.input = question
                                 vm.send()
@@ -162,13 +222,17 @@ struct ContentView: View {
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 18)
                                     .padding(.vertical, 14)
-                                    .background(RoundedRectangle(cornerRadius: 30).fill(Color.accentColor))
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 30)
+                                            .fill(welcomeColors[index % welcomeColors.count])
+                                    )
                             }
+                            .buttonStyle(.plain) // ✅ Removes extra rectangle
                             .accessibilityLabel(question)
                         }
                     }
                     HStack(spacing: 12) {
-                        ForEach(suggestedQuestions.suffix(2), id: \.self) { question in
+                        ForEach(Array(suggestedQuestions.suffix(2).enumerated()), id: \.element) { (index, question) in
                             Button(action: {
                                 vm.input = question
                                 vm.send()
@@ -178,8 +242,12 @@ struct ContentView: View {
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 18)
                                     .padding(.vertical, 14)
-                                    .background(RoundedRectangle(cornerRadius: 30).fill(Color.accentColor))
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 30)
+                                            .fill(welcomeColors[(index + 3) % welcomeColors.count])
+                                    )
                             }
+                            .buttonStyle(.plain) // ✅ Removes extra rectangle
                             .accessibilityLabel(question)
                         }
                     }
@@ -190,13 +258,14 @@ struct ContentView: View {
         }
         .padding()
     }
+
     
     private var messagesView: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(Array(vm.messages.enumerated()), id: \.offset) { index, message in
-                        MessageBubble(message: message)
+                        MessageBubble(message: message, color: chatColors[index % chatColors.count])
                             .id(index)
                     }
                 }
@@ -220,37 +289,40 @@ struct ContentView: View {
                     TextField("Type a message...", text: $vm.input, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(1...4)
+                        .disabled(!vm.isReady)
                     Button("Send") {
                         vm.send()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(vm.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .clipShape(RoundedRectangle(cornerRadius: 30))
+                    .disabled(vm.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !vm.isReady)
                 }
                 .padding()
+                
+                if !vm.isReady {
+                    Text("Thinking for \(thinkingElapsed) second(s)...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal)
+                        .padding(.bottom, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
 #if os(macOS)
             .background(Color(NSColor.controlBackgroundColor))
 #else
             .background(Color(.systemBackground))
 #endif
-            // Gradient overlay for 'response is being generated'
-            if !vm.isReady {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.blue.opacity(0.7), Color.purple.opacity(0.7), Color.indigo.opacity(0.7)]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .animation(.easeInOut(duration: 0.3), value: !vm.isReady)
-                    .transition(.opacity)
-                    .padding(4)
-            }
         }
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 8)
-        .animation(.easeInOut(duration: 0.3), value: !vm.isReady)
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            if let start = thinkingStartDate, !vm.isReady {
+                thinkingElapsed = Int(Date().timeIntervalSince(start))
+            } else {
+                thinkingElapsed = 0
+            }
+        }
     }
     
     // MARK: - History View
@@ -270,6 +342,7 @@ struct ContentView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
+                    .clipShape(RoundedRectangle(cornerRadius: 30))
                     
                     Picker("Model", selection: $historyFilterModel) {
                         Text("Gemma").tag("Gemma")
@@ -384,6 +457,7 @@ struct ContentView: View {
                     // Clear history action
                 } label: {
                     Label("Clear All History", systemImage: "trash")
+                        .clipShape(RoundedRectangle(cornerRadius: 30))
                 }
                 Divider()
 
@@ -453,6 +527,7 @@ struct ContentView: View {
                 } label: {
                     Label("Clear All History", systemImage: "trash")
                         .foregroundColor(.red)
+                        .clipShape(RoundedRectangle(cornerRadius: 30))
                 }
             }
             Section("About") {
@@ -481,6 +556,7 @@ struct ContentView: View {
 // Message bubble component
 struct MessageBubble: View {
     let message: String
+    let color: Color
     
     private var isUser: Bool {
         message.starts(with: "You:")
@@ -503,12 +579,12 @@ struct MessageBubble: View {
             
             Text(displayText)
                 .font(.body)
-                .foregroundColor(isUser ? .white : .primary)
+                .foregroundColor(.white)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 18)
-                        .fill(isUser ? Color.blue : Color.gray.opacity(0.2))
+                        .fill(color)
                 )
             
             if !isUser {

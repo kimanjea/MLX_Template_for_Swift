@@ -28,7 +28,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 In_chat_history = []
 
-pdf_path = "Final_Activity.pdf"
+pdf_path = "Final_Activity_v1.pdf"
 
 text_chunks = []
 with pdfplumber.open(pdf_path) as pdf:
