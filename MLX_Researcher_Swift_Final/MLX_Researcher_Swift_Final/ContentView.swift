@@ -54,8 +54,7 @@ struct ContentView: View {
         Color(hex: "#D41D5E"),
         Color(hex: "#06b81d"),
         Color(hex: "#047068"),
-        Color(hex: "#633887"),
-        Color(hex: "#FFD600")
+        Color(hex: "#633887")
     ]
     
     private let chatColors: [Color] = [
@@ -599,4 +598,3 @@ struct MLX_templateApp: App {
         }
     }
 }
-
