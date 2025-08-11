@@ -25,8 +25,6 @@ from typing import List
 
 pdf_path = "Data_Activisim_Piechart_Activity.pdf"
 
-login(token= "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")
-
 text_chunks = []
 with pdfplumber.open(pdf_path) as pdf:
     for page in pdf.pages:
