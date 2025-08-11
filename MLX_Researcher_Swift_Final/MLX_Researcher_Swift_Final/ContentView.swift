@@ -51,17 +51,19 @@ struct ContentView: View {
     ]
     
     private let welcomeColors: [Color] = [
-        Color(hex: "#D41D5E"),
-        Color(hex: "#06b81d"),
-        Color(hex: "#047068"),
-        Color(hex: "#633887")
+        Color(hex: "#DE0058"),
+        Color(hex: "#00B500"),
+        Color(hex: "#EDC300"),
+        Color(hex: "#1266E2"),
+        Color(hex: "#663887")
     ]
     
     private let chatColors: [Color] = [
-        Color(hex: "#D41D5E"),
-        Color(hex: "#06b81d"),
-        Color(hex: "#047068"),
-        Color(hex: "#633887")
+        Color(hex: "#DE0058"),
+        Color(hex: "#00B500"),
+        Color(hex: "#EDC300"),
+        Color(hex: "#1266E2"),
+        Color(hex: "#663887")
     ]
     
     private var boundModel: Binding<String> {
@@ -598,3 +600,4 @@ struct MLX_templateApp: App {
         }
     }
 }
+
