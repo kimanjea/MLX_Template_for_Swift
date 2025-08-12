@@ -171,8 +171,8 @@ struct ContentView: View {
                 
                 Picker("Model", selection: boundModel) {
                     Text("Gemma").tag("Gemma")
-                    Text("Phi-3").tag("Phi-3")
-                    Text("Mistral").tag("Mistral")
+                    Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
+                    Text("ChatGPT-4o-mini").tag("ChatGPT-4o-mini")
                 }
                 .pickerStyle(.menu)
                 .frame(maxWidth: 180)
@@ -346,8 +346,8 @@ struct ContentView: View {
                     
                     Picker("Model", selection: $historyFilterModel) {
                         Text("Gemma").tag("Gemma")
-                        Text("Phi-3").tag("Phi-3")
-                        Text("Mistral").tag("Mistral")
+                        Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
+                        Text("ChatGPT-4o-mini").tag("ChatGPT-4o-mini")
                     }
                     .pickerStyle(.segmented)
                 }
