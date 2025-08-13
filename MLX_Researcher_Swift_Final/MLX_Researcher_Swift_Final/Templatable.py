@@ -145,7 +145,7 @@ def ask(question: str) -> str:
     )
     
     sampler = make_sampler(
-    0.5,       # more variety than default 1.0
+    0.4,       # more variety than default 1.0
     0.85,             # only consider top 90% probable tokens
     xtc_threshold=0.5,       # trigger variety when top token prob > 60%
     xtc_probability=0.5  # avoid repeating same 4-word sequences
