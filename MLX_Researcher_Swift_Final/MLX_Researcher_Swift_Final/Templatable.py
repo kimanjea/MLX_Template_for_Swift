@@ -143,14 +143,22 @@ def ask(question: str) -> str:
         f"<|im_start|>user\n{question}\n<|im_end|>\n"
         f"<|im_start|>assistant\n"
     )
+    
+    sampler = make_sampler(
+    0.5,       # more variety than default 1.0
+    0.85,             # only consider top 90% probable tokens
+    xtc_threshold=0.5,       # trigger variety when top token prob > 60%
+    xtc_probability=0.5  # avoid repeating same 4-word sequences
+    )
     # ✅ Stream the response
     response_text = ""
     for response in stream_generate(
         model,
-        tokenizer,
-        prompt,
-        max_tokens=1024,
+        tokenizer=tokenizer,
+        prompt=prompt,
+        max_tokens=512,
         prompt_cache=prompt_cache,
+        sampler=sampler,
     ):
         response_text += response.text
     save_prompt_cache(cache_file, prompt_cache)
