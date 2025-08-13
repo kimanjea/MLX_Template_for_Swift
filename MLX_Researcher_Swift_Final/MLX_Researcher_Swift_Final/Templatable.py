@@ -156,7 +156,7 @@ def ask(question: str) -> str:
         model,
         tokenizer=tokenizer,
         prompt=prompt,
-        max_tokens=512,
+        max_tokens=256,
         prompt_cache=prompt_cache,
         sampler=sampler,
     ):
