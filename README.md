@@ -1,6 +1,6 @@
 # AVELA AI & XR LAB
 
-Key Collaborator: Shukra Jaliya Nankabirwa, Marquiese Garret, Kalkidan Maru, Elroe Yayiso, Laila Walker, Kalea Kamada, Brianna Smith, Evolone Layne
+Key Collaborators: Shukra Jaliya Nankabirwa, Marquiese Garret, Kalkidan Maru, Elroe Yayiso, Laila Walker, Kalea Kamada, Brianna Smith, Evolone Layne
 
 A SwiftUI chat client paired with a Python FastAPI + MLX backend for interactive data‑activism tutoring and code hints.
 
