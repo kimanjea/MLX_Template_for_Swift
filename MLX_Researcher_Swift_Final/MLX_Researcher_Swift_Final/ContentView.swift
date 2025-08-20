@@ -28,7 +28,7 @@ extension Color {
 }
 
 // 1. Add a struct for a chat session at the top (for demo purposes).
-struct ChatSession: Identifiable {
+struct ChatUISession: Identifiable {
     let id: UUID
     var model: String
     var messages: [String]
@@ -39,7 +39,7 @@ struct ContentView: View {
     @StateObject private var vm = ChatViewModel()
     @State private var selectedModel: String = "Gemma"
     // 2. Replace single session ID with multi-session state:
-    @State private var chatSessions: [ChatSession] = []
+    @State private var ChatUISessions: [ChatUISession] = []
     @State private var selectedSessionID: UUID? = nil
     @State private var historyFilterModel: String = "Gemma"
     
@@ -75,7 +75,7 @@ struct ContentView: View {
         Binding(
             get: {
                 if let sessionID = selectedSessionID,
-                   let session = chatSessions.first(where: { $0.id == sessionID }) {
+                   let session = ChatUISessions.first(where: { $0.id == sessionID }) {
                     return session.model
                 }
                 return selectedModel
@@ -83,15 +83,15 @@ struct ContentView: View {
             set: { newValue in
                 selectedModel = newValue
                 if let sessionID = selectedSessionID,
-                   let index = chatSessions.firstIndex(where: { $0.id == sessionID }) {
-                    chatSessions[index].model = newValue
+                   let index = ChatUISessions.firstIndex(where: { $0.id == sessionID }) {
+                    ChatUISessions[index].model = newValue
                 }
             }
         )
     }
     
-    private var modelSections: [(key: String, value: [ChatSession])] {
-        Dictionary(grouping: chatSessions, by: { $0.model })
+    private var modelSections: [(key: String, value: [ChatUISession])] {
+        Dictionary(grouping: ChatUISessions, by: { $0.model })
             .sorted { $0.key < $1.key }
     }
     
@@ -117,9 +117,9 @@ struct ContentView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .onAppear {
-            if chatSessions.isEmpty {
-                let newSession = ChatSession(id: UUID(), model: selectedModel, messages: [], created: Date())
-                chatSessions.insert(newSession, at: 0)
+            if ChatUISessions.isEmpty {
+                let newSession = ChatUISession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                ChatUISessions.insert(newSession, at: 0)
                 selectedSessionID = newSession.id
                 vm.messages = []
                 vm.input = ""
@@ -127,7 +127,7 @@ struct ContentView: View {
         }
         .onChange(of: selectedSessionID) { newValue in
             guard let sessionID = newValue,
-                  let session = chatSessions.first(where: { $0.id == sessionID }) else {
+                  let session = ChatUISessions.first(where: { $0.id == sessionID }) else {
                 vm.messages = []
                 vm.input = ""
                 return
@@ -145,6 +145,21 @@ struct ContentView: View {
         }
     }
     
+    // Added this computed property to reduce complexity in homeView
+    private var modelLoadingOverlay: some View {
+        Group {
+            if vm.isModelLoading {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .scaleEffect(1.3)
+                    .padding()
+                    .clipShape(Circle())
+                    .shadow(radius: 4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+        }
+    }
+    
     // MARK: - Home View (Chat Interface)
     private var homeView: some View {
         VStack(spacing: 0) {
@@ -158,8 +173,8 @@ struct ContentView: View {
             HStack(spacing: 16) {
                 Button(action: {
                     // 3. Append new session and select it
-                    let newSession = ChatSession(id: UUID(), model: selectedModel, messages: [], created: Date())
-                    chatSessions.insert(newSession, at: 0)
+                    let newSession = ChatUISession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                    ChatUISessions.insert(newSession, at: 0)
                     selectedSessionID = newSession.id
                     vm.messages = []
                     vm.input = ""
@@ -191,11 +206,12 @@ struct ContentView: View {
         .onChange(of: vm.messages) { newMessages in
             // 4. Update current session's messages when vm.messages changes (e.g. after sending)
             guard let sessionID = selectedSessionID,
-                  let index = chatSessions.firstIndex(where: { $0.id == sessionID }) else {
+                  let index = ChatUISessions.firstIndex(where: { $0.id == sessionID }) else {
                 return
             }
-            chatSessions[index].messages = newMessages
+            ChatUISessions[index].messages = newMessages
         }
+        .overlay(modelLoadingOverlay)
         
     }
     
@@ -332,8 +348,8 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Button(action: {
                         // 3. Append new session and select it
-                        let newSession = ChatSession(id: UUID(), model: selectedModel, messages: [], created: Date())
-                        chatSessions.insert(newSession, at: 0)
+                        let newSession = ChatUISession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                        ChatUISessions.insert(newSession, at: 0)
                         selectedSessionID = newSession.id
                         vm.messages = []
                         vm.input = ""
@@ -355,7 +371,7 @@ struct ContentView: View {
                 
                 // Show only conversations matching the selected model
                 Section(header: Text("\(historyFilterModel)")) {
-                    ForEach(chatSessions.filter { $0.model == historyFilterModel }.prefix(5)) { session in
+                    ForEach(ChatUISessions.filter { $0.model == historyFilterModel }.prefix(5)) { session in
                         VStack(alignment: .leading, spacing: 4) {
                             Button {
                                 selectedSessionID = session.id
