@@ -53,7 +53,7 @@ class ChatViewModel: ObservableObject {
         return fullText
     }
     
-    func splitTextIntoChunks(_ text: String, chunkSize: Int = 250, overlap: Int = 50) -> [String] {
+    func splitTextIntoChunks(_ text: String, chunkSize: Int = 100, overlap: Int = 50) -> [String] {
         let words = text.components(separatedBy: .whitespacesAndNewlines)
         var chunks: [String] = []
         var index = 0
@@ -91,6 +91,14 @@ class ChatViewModel: ObservableObject {
             return nil
         }
     }
+    
+    let SYSTEM_PROMPT = """
+       You are an expert who only teaches data activism and Python programming to K–12 students.
+       You explain concepts step by step using clear, scaffolded language.
+       You never provide exact code solutions.
+       If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps.
+       For general programming questions (like "How do I create a function?"), give a detailed explanation with a short example, but do not solve specific student problems.
+       """
 
     func send() {
         guard isReady,
@@ -115,7 +123,22 @@ class ChatViewModel: ObservableObject {
             let start = Date()
             do {
                 let elapsed = Date().timeIntervalSince(start)
-                let userPrompt = question
+                
+                let prompt = """
+                                <|im_start|>system
+                                \(SYSTEM_PROMPT)
+                                <|im_end|>
+                                <|im_start|>user
+                                Question:
+                                \(question)
+
+                                Context:
+                                \(context)
+                                <|im_end|>
+                                <|im_start|>assistant
+                                """
+                
+                let userPrompt = prompt
                 let reply = try await session.respond(to: userPrompt)
                 messages.append("Bot (\(String(format: "%.2f", elapsed))s): \(reply)")
             } catch {
