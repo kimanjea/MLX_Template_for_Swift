@@ -21,8 +21,6 @@ class ChatViewModel: ObservableObject {
     @Published var isModelLoading: Bool = true
     private var session: ChatSession?
 
-    private let endpointURL = URL(string: "http://127.0.0.1:8000/ask")!
-
     init() {
         Task {
             self.isModelLoading = true
