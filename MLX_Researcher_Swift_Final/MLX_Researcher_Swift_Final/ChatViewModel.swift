@@ -2,55 +2,81 @@ import Foundation
 import MLX
 import MLXLLM
 import MLXLMCommon
-import Metal
 import SwiftUI
-import Tokenizers
 import Combine
 
-struct AskResponse: Decodable {
-    let answer: String
+struct ClassifyResponse: Decodable {
+    let topic: String
+    let context_chunks: [String]?
 }
 
 @MainActor
 class ChatViewModel: ObservableObject {
     @Published var input = ""
     @Published var messages: [String] = []
-    @Published private(set) var isReady = true
+    @Published var isReady = true
 
-    private let endpointURL = URL(string: "http://127.0.0.1:8000/ask")!
+    var session: ChatSession?
+    let classifyURL = URL(string: "http://127.0.0.1:8000/classify")!
+
+    let SYSTEM_PROMPT = """
+    You are an expert who only teaches data activism and Python programming to K–12 students.
+    You explain concepts step by step using clear, scaffolded language.
+    You never provide exact code solutions.
+    If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps.
+    For general programming questions (like "How do I create a function?"), give a detailed explanation with a short example, but do not solve specific student problems.
+    """
 
     init() {
-        // Assume FastAPI server is running and ready
+        Task {
+            let model = try await loadModel(id: "ShukraJaliya/BLUECOMPUTER.2")
+            session = ChatSession(model)
+        }
     }
 
     func send() {
-        guard isReady,
-              !input.trimmingCharacters(in: .whitespaces).isEmpty
-        else { return }
+        guard let session = session else { return }
+        let userText = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !userText.isEmpty else { return }
 
-        let question = input
-        messages.append("You: \(question)")
+        messages.append("You: \(userText)")
         input = ""
         isReady = false
+
         Task { @MainActor in
             let start = Date()
             do {
-                var request = URLRequest(url: endpointURL)
-                request.timeoutInterval = 300
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                let payload = ["question": question]
-                request.httpBody = try JSONEncoder().encode(payload)
+                var req = URLRequest(url: classifyURL)
+                req.httpMethod = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = try JSONEncoder().encode(["question": userText])
 
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse,
-                      200..<300 ~= http.statusCode else {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                guard let http = resp as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
                     throw URLError(.badServerResponse)
                 }
+                let cls = try JSONDecoder().decode(ClassifyResponse.self, from: data)
 
-                let askResp = try JSONDecoder().decode(AskResponse.self, from: data)
+                let chunks = (cls.topic == "on-topic") ? (cls.context_chunks ?? []) : []
+                let contextText = chunks.joined(separator: "\n")
+
+                let prompt = """
+                <|im_start|>system
+                \(SYSTEM_PROMPT)
+                <|im_end|>
+                <|im_start|>user
+                Question:
+                \(userText)
+
+                Context:
+                \(contextText)
+                <|im_end|>
+                <|im_start|>assistant
+                """
+
+                let reply = try await session.respond(to: prompt)
                 let elapsed = Date().timeIntervalSince(start)
-                messages.append("Bot (\(String(format: "%.2f", elapsed))s): \(askResp.answer)")
+                messages.append("Bot (\(String(format: "%.2f", elapsed))s): \(reply)")
             } catch {
                 let elapsed = Date().timeIntervalSince(start)
                 messages.append("Error (\(String(format: "%.2f", elapsed))s): \(error.localizedDescription)")

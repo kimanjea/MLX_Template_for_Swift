@@ -1,37 +1,21 @@
-#
-# server.py
-#  MLX Researcher
-#
-#  Created by xrlead on 8/4/25.
-#
-
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
-import os
+from Templatable import classify_and_context  # <- import the new helper
 import uvicorn
-from Templatable import ask  # or import ask if you have a full RAG ask() function
 
-class AskRequest(BaseModel):
+class ClassifyRequest(BaseModel):
     question: str
 
-class AskResponse(BaseModel):
-    answer: str
+class ClassifyResponse(BaseModel):
+    topic: str
+    context_text: str   # NEW
 
-app = FastAPI(
-    title="MLX Template API",
-    version="1.1"
-)
+app = FastAPI(title="MLX Classifier API", version="1.0")
 
-@app.post("/ask", response_model=AskResponse)
-def ask_endpoint(req: AskRequest):
-    return AskResponse(answer=ask(req.question))
-    
-    
+@app.post("/classify", response_model=ClassifyResponse)
+def classify_endpoint(req: ClassifyRequest):
+    topic, ctx, _ = classify_and_context(req.question, top_k=6)
+    return ClassifyResponse(topic=topic, context_text=ctx)
+
 if __name__ == "__main__":
-    # Use 0.0.0.0 to allow network access; port 8000 matches your Swift client
-    uvicorn.run(
-        "server:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
