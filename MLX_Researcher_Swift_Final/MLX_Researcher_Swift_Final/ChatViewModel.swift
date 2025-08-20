@@ -6,6 +6,7 @@ import Metal
 import SwiftUI
 import Tokenizers
 import Combine
+import CoreML
 
 struct AskResponse: Decodable {
     let answer: String
@@ -22,6 +23,19 @@ class ChatViewModel: ObservableObject {
     init() {
         // Assume FastAPI server is running and ready
     }
+    
+    private func classifyTopic(for question: String) -> String? {
+        guard let modelURL = Bundle.main.url(forResource: "TopicClassifier", withExtension: "mlmodelc") else { return nil }
+        do {
+            let model = try MLModel(contentsOf: modelURL)
+            let input = try MLDictionaryFeatureProvider(dictionary: ["text": question])
+            let prediction = try model.prediction(from: input)
+            return prediction.featureValue(for: "label")?.stringValue
+        } catch {
+            print("Topic classification failed: \(error)")
+            return nil
+        }
+    }
 
     func send() {
         guard isReady,
@@ -29,6 +43,9 @@ class ChatViewModel: ObservableObject {
         else { return }
 
         let question = input
+        if let topic = classifyTopic(for: question) {
+            print("Predicted topic: \(topic)")
+        }
         messages.append("You: \(question)")
         input = ""
         isReady = false
@@ -41,7 +58,6 @@ class ChatViewModel: ObservableObject {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 let payload = ["question": question]
                 request.httpBody = try JSONEncoder().encode(payload)
-
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse,
                       200..<300 ~= http.statusCode else {
