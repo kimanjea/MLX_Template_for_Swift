@@ -28,7 +28,7 @@ extension Color {
 }
 
 // 1. Add a struct for a chat session at the top (for demo purposes).
-struct ChatSession: Identifiable {
+struct ChatSess: Identifiable {
     let id: UUID
     var model: String
     var messages: [String]
@@ -39,7 +39,7 @@ struct ContentView: View {
     @StateObject private var vm = ChatViewModel()
     @State private var selectedModel: String = "Gemma"
     // 2. Replace single session ID with multi-session state:
-    @State private var chatSessions: [ChatSession] = []
+    @State private var ChatSesss: [ChatSess] = []
     @State private var selectedSessionID: UUID? = nil
     @State private var historyFilterModel: String = "Gemma"
     
@@ -50,7 +50,7 @@ struct ContentView: View {
     private let suggestedQuestions = [
         "What is data activism?",
         "What is a variable?",
-        "What is Python?",
+        "What is a string?",
         "What is a function?",
         "Examples of Data Activism"
     ]
@@ -69,13 +69,14 @@ struct ContentView: View {
         Color(hex: "#EDC300"),
         Color(hex: "#1266E2"),
         Color(hex: "#663887")
+
     ]
     
     private var boundModel: Binding<String> {
         Binding(
             get: {
                 if let sessionID = selectedSessionID,
-                   let session = chatSessions.first(where: { $0.id == sessionID }) {
+                   let session = ChatSesss.first(where: { $0.id == sessionID }) {
                     return session.model
                 }
                 return selectedModel
@@ -83,15 +84,15 @@ struct ContentView: View {
             set: { newValue in
                 selectedModel = newValue
                 if let sessionID = selectedSessionID,
-                   let index = chatSessions.firstIndex(where: { $0.id == sessionID }) {
-                    chatSessions[index].model = newValue
+                   let index = ChatSesss.firstIndex(where: { $0.id == sessionID }) {
+                    ChatSesss[index].model = newValue
                 }
             }
         )
     }
     
-    private var modelSections: [(key: String, value: [ChatSession])] {
-        Dictionary(grouping: chatSessions, by: { $0.model })
+    private var modelSections: [(key: String, value: [ChatSess])] {
+        Dictionary(grouping: ChatSesss, by: { $0.model })
             .sorted { $0.key < $1.key }
     }
     
@@ -117,9 +118,9 @@ struct ContentView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .onAppear {
-            if chatSessions.isEmpty {
-                let newSession = ChatSession(id: UUID(), model: selectedModel, messages: [], created: Date())
-                chatSessions.insert(newSession, at: 0)
+            if ChatSesss.isEmpty {
+                let newSession = ChatSess(id: UUID(), model: selectedModel, messages: [], created: Date())
+                ChatSesss.insert(newSession, at: 0)
                 selectedSessionID = newSession.id
                 vm.messages = []
                 vm.input = ""
@@ -127,7 +128,7 @@ struct ContentView: View {
         }
         .onChange(of: selectedSessionID) { newValue in
             guard let sessionID = newValue,
-                  let session = chatSessions.first(where: { $0.id == sessionID }) else {
+                  let session = ChatSesss.first(where: { $0.id == sessionID }) else {
                 vm.messages = []
                 vm.input = ""
                 return
@@ -158,8 +159,8 @@ struct ContentView: View {
             HStack(spacing: 16) {
                 Button(action: {
                     // 3. Append new session and select it
-                    let newSession = ChatSession(id: UUID(), model: selectedModel, messages: [], created: Date())
-                    chatSessions.insert(newSession, at: 0)
+                    let newSession = ChatSess(id: UUID(), model: selectedModel, messages: [], created: Date())
+                    ChatSesss.insert(newSession, at: 0)
                     selectedSessionID = newSession.id
                     vm.messages = []
                     vm.input = ""
@@ -191,10 +192,10 @@ struct ContentView: View {
         .onChange(of: vm.messages) { newMessages in
             // 4. Update current session's messages when vm.messages changes (e.g. after sending)
             guard let sessionID = selectedSessionID,
-                  let index = chatSessions.firstIndex(where: { $0.id == sessionID }) else {
+                  let index = ChatSesss.firstIndex(where: { $0.id == sessionID }) else {
                 return
             }
-            chatSessions[index].messages = newMessages
+            ChatSesss[index].messages = newMessages
         }
         
     }
@@ -332,8 +333,8 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Button(action: {
                         // 3. Append new session and select it
-                        let newSession = ChatSession(id: UUID(), model: selectedModel, messages: [], created: Date())
-                        chatSessions.insert(newSession, at: 0)
+                        let newSession = ChatSess(id: UUID(), model: selectedModel, messages: [], created: Date())
+                        ChatSesss.insert(newSession, at: 0)
                         selectedSessionID = newSession.id
                         vm.messages = []
                         vm.input = ""
@@ -355,7 +356,7 @@ struct ContentView: View {
                 
                 // Show only conversations matching the selected model
                 Section(header: Text("\(historyFilterModel)")) {
-                    ForEach(chatSessions.filter { $0.model == historyFilterModel }.prefix(5)) { session in
+                    ForEach(ChatSesss.filter { $0.model == historyFilterModel }.prefix(5)) { session in
                         VStack(alignment: .leading, spacing: 4) {
                             Button {
                                 selectedSessionID = session.id
