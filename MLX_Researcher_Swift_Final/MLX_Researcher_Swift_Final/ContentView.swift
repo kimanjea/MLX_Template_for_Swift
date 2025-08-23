@@ -287,10 +287,13 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 Divider()
                 HStack(spacing: 12) {
-                    TextField("Type a message...", text: $vm.input, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(1...4)
-                        .disabled(!vm.isReady)
+                    TextEditor(text: $vm.input)
+                        .frame(minHeight: 44, maxHeight: 44) // Adjust heights as needed
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                        )
                     Button("Send") {
                         vm.send()
                     }
