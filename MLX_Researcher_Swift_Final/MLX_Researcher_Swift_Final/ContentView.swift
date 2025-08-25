@@ -149,13 +149,21 @@ struct ContentView: View {
     private var modelLoadingOverlay: some View {
         Group {
             if vm.isModelLoading {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .scaleEffect(1.3)
+                if let progress = vm.modelLoadProgress {
+                    ProgressView(value: progress.fractionCompleted) {
+                        Text("Model Loading... \(Int(progress.fractionCompleted * 100))%")
+                    }
+                    .progressViewStyle(.linear)
                     .padding()
-                    .clipShape(Circle())
-                    .shadow(radius: 4)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .animation(.default, value: progress.fractionCompleted)
+                } else {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(1.3)
+                        .padding()
+                        .clipShape(Circle())
+                        .shadow(radius: 4)
+                }
             }
         }
     }

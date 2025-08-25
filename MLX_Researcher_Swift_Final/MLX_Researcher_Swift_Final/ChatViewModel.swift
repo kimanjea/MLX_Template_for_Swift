@@ -21,14 +21,21 @@ class ChatViewModel: ObservableObject {
     @Published var messages: [String] = []
     @Published private(set) var isReady = true
     @Published var isModelLoading: Bool = true
+    @Published var modelLoadProgress: Progress? = nil
     private var session: ChatSession?
 
     init() {
         Task {
             self.isModelLoading = true
+            let progress = Progress(totalUnitCount: 100)
+            self.modelLoadProgress = progress
             do {
-                let model = try await loadModel(id: "ShukraJaliya/BLUECOMPUTER.2")
-                session = ChatSession(model)
+                let model = try await loadModel(id: "ShukraJaliya/BLUECOMPUTER.2", progressHandler: { [weak self] prog in
+                    Task { @MainActor in
+                        self?.modelLoadProgress = prog
+                    }
+                })
+                session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters.init(temperature: 0.65,topP: 0.9 ))
             } catch {
                 print("Model loading failed: \(error)")
             }
@@ -59,12 +66,8 @@ class ChatViewModel: ObservableObject {
        """
 
     func send() {
-        guard isReady,
-              !input.trimmingCharacters(in: .whitespaces).isEmpty
-        else { return }
         
         guard let session = session, !input.isEmpty else { return }
-                
         let question = input
         messages.append("You: \(question)")
         input = ""
@@ -84,22 +87,19 @@ class ChatViewModel: ObservableObject {
         Task { @MainActor in
             let start = Date()
             do {
-                let elapsed = Date().timeIntervalSince(start)
+                
 
                 let prompt = """
-                                <|im_start|>system
-                                \(SYSTEM_PROMPT)
-                                <|im_end|>
                                 <|im_start|>user
                                  Answer the Question:
                                 \(question)
-
                                 <|im_end|>
                                 <|im_start|>assistant
                                 """
                 
                 let userPrompt = prompt
                 let reply = try await session.respond(to: userPrompt)
+                let elapsed = Date().timeIntervalSince(start)
                 messages.append("(\(String(format: "%.2f", elapsed))s): \(reply)")
             } catch {
                 let elapsed = Date().timeIntervalSince(start)

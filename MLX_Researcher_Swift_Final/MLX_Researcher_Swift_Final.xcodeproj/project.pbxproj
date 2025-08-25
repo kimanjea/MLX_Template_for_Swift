@@ -35,6 +35,11 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		1D2E49EB2E5CBABA0016AE5D /* tokenizer */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = tokenizer;
+			sourceTree = "<group>";
+		};
 		1D396A442E42BCAB008839C0 /* MLX_Researcher_Swift_Final */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = MLX_Researcher_Swift_Final;
@@ -82,6 +87,7 @@
 		1D396A392E42BCAB008839C0 = {
 			isa = PBXGroup;
 			children = (
+				1D2E49EB2E5CBABA0016AE5D /* tokenizer */,
 				1D396A442E42BCAB008839C0 /* MLX_Researcher_Swift_Final */,
 				1D396A542E42BCAC008839C0 /* MLX_Researcher_Swift_FinalTests */,
 				1D396A5E2E42BCAC008839C0 /* MLX_Researcher_Swift_FinalUITests */,
@@ -123,6 +129,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				1D2E49EB2E5CBABA0016AE5D /* tokenizer */,
 				1D396A442E42BCAB008839C0 /* MLX_Researcher_Swift_Final */,
 			);
 			name = MLX_Researcher_Swift_Final;
@@ -413,6 +420,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "tokenizer/vocab.txt tokenizer/tokenizer.json tokenizer/special_tokens_map.json tokenizer tokenizer/tokenizer_config.json";
 				DEVELOPMENT_TEAM = 8JWK33DY4R;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
@@ -472,6 +480,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "tokenizer/vocab.txt tokenizer/tokenizer.json tokenizer/special_tokens_map.json tokenizer tokenizer/tokenizer_config.json";
 				DEVELOPMENT_TEAM = 8JWK33DY4R;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
