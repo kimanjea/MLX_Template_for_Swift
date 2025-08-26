@@ -6,8 +6,8 @@ import SwiftUI
 import Combine
 
 struct ClassifyResponse: Decodable {
-    let topic: String                // "on-topic" | "off-topic"
-    let context_chunks: [String]?    // [] or nil when off-topic
+    let topic: String                 // "on-topic" | "off-topic"
+    let context_chunks: [String]?     // [] or nil when off-topic
 }
 
 @MainActor
@@ -19,20 +19,47 @@ class ChatViewModel: ObservableObject {
     private var session: ChatSession?
     private let classifyURL = URL(string: "http://127.0.0.1:8000/classify")!
 
-    // Your original system prompt (unchanged)
-    private let SYSTEM_PROMPT = "You are an expert who only teaches data activism and Python programming to K–12 students. You explain concepts step by step using clear, scaffolded language. You never provide exact code solutions. If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. For general programming questions (like \"How do I create a function?\"), give a full explanation with a short example, but do not solve specific problems. If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming."
-    
+    // System prompt + guardrails about scaffold mode & context use
+    private let SYSTEM_PROMPT = """
+    You are an expert who only teaches data activism and Python programming to K–12 students.
+
+    Follow the exact response patterns from training:
+
+    1. If the USER MESSAGE contains code with literal '?' placeholders:
+       - Repeat the code line.
+       - On the next line, use bullet points (• and ◦) to explain each placeholder and the meaning of the line.
+       - Do this line by line, never grouping explanations together.
+
+    2. If the USER MESSAGE is a general programming or data activism question:
+       - Give a short illustrative example (with different variable names than the user’s code).
+       - Then explain the example step by step using bullet points.
+
+    3. If the USER MESSAGE is unrelated to data activism or Python:
+       - Reply only with: "I can only answer questions about data activism or Python programming."
+
+    4. If retrieval context is provided:
+       - First answer in the correct format above.
+       - If the context directly supports the answer, add at most 2 short “From context:” bullet points.
+       - Ignore the context if it is not directly helpful.
+    """
+
     init() {
         Task {
-            // Do NOT pass instructions here — we’ll build the exact training template by hand
             let model = try await loadModel(id: "ShukraJaliya/BLUECOMPUTER.2")
-            session = ChatSession(model, generateParameters: .init(maxTokens: 512, temperature: 0.65, topP: 0.9))
+            session = ChatSession(
+                model,
+                generateParameters: .init(
+                    maxTokens: 600,
+                    temperature: 0.7,
+                    topP: 0.9
+                )
+            )
         }
     }
 
     func send() {
         guard let session = session else { return }
-        let userText = input                 // EXACT input, no trimming or cleaning
+        let userText = input                 // EXACT input, no trimming/cleaning
         guard !userText.isEmpty else { return }
 
         messages.append("You: \(userText)")
@@ -42,7 +69,7 @@ class ChatViewModel: ObservableObject {
         Task { @MainActor in
             let start = Date()
             do {
-                // 1) Classify (server prints on/off-topic in temp.py)
+                // 1) Classify
                 var req = URLRequest(url: classifyURL)
                 req.httpMethod = "POST"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -53,23 +80,39 @@ class ChatViewModel: ObservableObject {
                     throw URLError(.badServerResponse)
                 }
                 let cls = try JSONDecoder().decode(ClassifyResponse.self, from: data)
-
-                // 2) On-topic → include chunks; Off-topic → empty context
                 let chunks = (cls.topic == "on-topic") ? (cls.context_chunks ?? []) : []
-                let contextText = chunks.joined(separator: "\n")
+                let contextText = chunks.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
 
-                // 3) Build the prompt in the SAME template used during training
-                //    (system → user → assistant, with <|im_start|> / <|im_end|>)
+                print("[Swift RAG debug] topic=\(cls.topic)  context.len=\(contextText.count)")
+
+                // 2) Build training-aligned prompt (<|im_start|>/end)
                 let prompt: String
-                if contextText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    // FREESTYLE: No context added for weak/empty retrieval
-                    prompt = "<|im_start|>system \(SYSTEM_PROMPT) If you don’t have enough context, answer as best you can based on your training.<|im_end|><|im_start|>user \(userText)<|im_end|><|im_start|>assistant"
+                if contextText.isEmpty {
+                    // Conceptual answer, no RAG
+                    prompt = """
+                    <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                    <|im_start|>user \(userText)<|im_end|>
+                    <|im_start|>assistant Please answer the user's question directly in 2–4 sentences. Do not invent code or placeholder replacements.
+                    """
                 } else {
-                    // Normal: Use context as usual
-                    prompt = "<|im_start|>system \(SYSTEM_PROMPT)<|im_end|><|im_start|>user \(userText)\n\nContext:\n\(contextText)<|im_end|><|im_start|>assistant"
+                    // Answer-first + short, optional “From context” section
+                    prompt = """
+                    <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                    <|im_start|>user \(userText)
+
+                    Context:
+                    \(contextText)<|im_end|>
+                    <|im_start|>assistant First answer the user's question directly in 2–4 sentences.
+                    If (and only if) the Context clearly supports the answer, add a brief section:
+                    - Start a new line with: "From context:"
+                    - Provide at most 2 short bullet points.
+                    Do not copy code or describe placeholder replacements unless the user pasted code with literal '?' placeholders.
+                    """
                 }
 
-                // 4) Generate locally
+                print("[Prompt sent to model]:\n\(prompt)")
+
+                // 3) Generate locally
                 let reply = try await session.respond(to: prompt)
 
                 let elapsed = Date().timeIntervalSince(start)

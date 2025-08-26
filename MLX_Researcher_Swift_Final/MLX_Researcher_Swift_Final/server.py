@@ -1,21 +1,19 @@
+# server.py
 from fastapi import FastAPI
 from pydantic import BaseModel
-from Templatable import classify_and_context  # <- import the new helper
-import uvicorn
+from Templatable import classify_and_context
 
 class ClassifyRequest(BaseModel):
     question: str
 
 class ClassifyResponse(BaseModel):
     topic: str
-    context_text: str   # NEW
+    context_chunks: list[str]
 
 app = FastAPI(title="MLX Classifier API", version="1.0")
 
 @app.post("/classify", response_model=ClassifyResponse)
 def classify_endpoint(req: ClassifyRequest):
-    topic, ctx, _ = classify_and_context(req.question, top_k=6)
-    return ClassifyResponse(topic=topic, context_text=ctx)
-
-if __name__ == "__main__":
-    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
+    topic, ctx, chunks = classify_and_context(req.question, top_k=6)
+    chunks = [c for c in chunks if c and c.strip()]
+    return ClassifyResponse(topic=topic, context_chunks=chunks)

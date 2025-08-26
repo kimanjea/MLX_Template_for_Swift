@@ -349,9 +349,9 @@ struct ContentView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 30))
                     
                     Picker("Model", selection: $historyFilterModel) {
-                        Text("Gemma").tag("Gemma")
+//                        Text("Gemma").tag("Gemma")
                         Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
-                        Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
+//                        Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
                     }
                     .pickerStyle(.segmented)
                 }
