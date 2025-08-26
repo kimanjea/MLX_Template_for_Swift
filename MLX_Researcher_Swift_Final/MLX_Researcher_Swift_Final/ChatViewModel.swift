@@ -60,18 +60,14 @@ class ChatViewModel: ObservableObject {
 
                 // 3) Build the prompt in the SAME template used during training
                 //    (system → user → assistant, with <|im_start|> / <|im_end|>)
-                let prompt = """
-                <|im_start|>system
-                \(SYSTEM_PROMPT)
-                <|im_end|>
-                <|im_start|>user
-                \(userText)
-
-                Context:
-                \(contextText)
-                <|im_end|>
-                <|im_start|>assistant
-                """
+                let prompt: String
+                if contextText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    // FREESTYLE: No context added for weak/empty retrieval
+                    prompt = "<|im_start|>system \(SYSTEM_PROMPT) If you don’t have enough context, answer as best you can based on your training.<|im_end|><|im_start|>user \(userText)<|im_end|><|im_start|>assistant"
+                } else {
+                    // Normal: Use context as usual
+                    prompt = "<|im_start|>system \(SYSTEM_PROMPT)<|im_end|><|im_start|>user \(userText)\n\nContext:\n\(contextText)<|im_end|><|im_start|>assistant"
+                }
 
                 // 4) Generate locally
                 let reply = try await session.respond(to: prompt)
