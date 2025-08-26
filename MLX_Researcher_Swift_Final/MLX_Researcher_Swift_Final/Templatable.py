@@ -2,15 +2,14 @@
 import os
 import sys
 import csv
-import re
 from datetime import datetime
 from typing import List, Tuple
-
 import numpy as np
 import pdfplumber
 from sentence_transformers import SentenceTransformer
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+import re
 
 # -------------------------------
 # Load documents & embeddings
@@ -94,7 +93,6 @@ def keyword_score(q: str, sent: str) -> int:
 def compress_context(question: str, raw_chunks: List[str], scaffold: bool, max_chars: int = 800) -> str:
     kept: List[str] = []
     for ch in raw_chunks:
-        # For non-scaffold Q&A, strip out code-like lines and any "?" lines
         if not scaffold:
             lines = [ln for ln in ch.splitlines() if not CODEY_LINE.search(ln) and "?" not in ln]
             ch = " ".join(lines).strip()
@@ -102,8 +100,8 @@ def compress_context(question: str, raw_chunks: List[str], scaffold: bool, max_c
                 continue
 
         sents = split_sentences(ch)
-        # keep top 2 sentences per chunk by keyword overlap
-        scored = sorted(((keyword_score(question, s), s) for s in sents), key=lambda x: x[0], reverse=True)[:2]
+        scored = sorted(((keyword_score(question, s), s) for s in sents),
+                        key=lambda x: x[0], reverse=True)[:2]
         for score, s in scored:
             if score > 0:
                 kept.append(s)
@@ -116,43 +114,53 @@ def compress_context(question: str, raw_chunks: List[str], scaffold: bool, max_c
         ctx = ctx[:max_chars].rsplit(" ", 1)[0] + "…"
     return ctx
 
+# 👇👇👇 DEDENTED TO MODULE SCOPE (not inside compress_context)
+CODE_PAT = re.compile(
+    r"(```|^def\s+|^class\s+|^import\s+|^from\s+|return\b|for\s+\w+\s+in\b|while\b|if\b|elif\b|else:|try:|except\b|with\b|="
+    r"|pd\.|df\[|\.plot\(|\)\s*:|\{\s*\}|\[\s*\]|\(\s*\))",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+def is_code(q: str) -> bool:
+    if "```" in q:
+        return True
+    lines = q.splitlines()
+    hits = 0
+    for ln in lines:
+        if CODE_PAT.search(ln):
+            hits += 1
+    return hits >= 1 or ("\n" in q and any(x in q for x in (":", "=", "()", "[]")))
+
 # -------------------------------
 # Main RAG entry
 # -------------------------------
 def classify_and_context(question: str,
                          top_k: int = 6,
                          min_sim: float = 0.40) -> tuple[str, str, list[str]]:
-    """
-    Returns:
-      topic: "on-topic" | "off-topic"
-      context_text: compressed, non-codey support text ('' if none)
-      chunks: [context_text] or []   (Swift expects a list of strings)
-    """
     topic = classify(question)
-    scaffold = is_scaffold(question)
 
-    context_text = ""
-    chunks: List[str] = []
+    # 🚫 HARD STOP: if it's code (incomplete OR complete) → no RAG at all
+    if is_code(question):
+        print(f"[RAG] q={question!r} looks like CODE → skipping context entirely")
+        return topic, "", []
 
+    # (keep your existing generic/threshold logic for non-code Q&A)
     if topic == "on-topic" and not is_generic_definition(question):
-        results = retrieve_context(question, top_k=top_k)  # [(text, score)]
+        results = retrieve_context(question, top_k=top_k)
         kept = [(t, s) for (t, s) in results if s >= min_sim]
 
-        # For very short questions, demand a stronger match for RAG
+        # extra guard for very short questions
         if len(question.split()) <= 8 and kept and kept[0][1] < 0.50:
             kept = []
 
         raw_chunks = [t for (t, _) in kept]
 
-        # Final compression & cleaning so the context is supportive, not a dump
-        context_text = compress_context(question, raw_chunks, scaffold, max_chars=800)
-        if context_text:
-            chunks = [context_text]  # single supportive blob
+        # optional: compress/clean if you kept that helper
+        context_text = compress_context(question, raw_chunks, scaffold=False, max_chars=800) if raw_chunks else ""
+        chunks = [context_text] if context_text else []
 
         print(f"[RAG] q={question!r} retrieved={len(results)} kept={len(kept)} inject={'yes' if chunks else 'no'}")
-        for i, (_t, s) in enumerate(kept[:3]):  # log top-3 scores
-            print(f"[RAG] kept#{i+1} score={s:.3f}")
-    else:
-        print(f"[RAG] q={question!r} -> no context (topic={topic}, generic={is_generic_definition(question)})")
+        return topic, context_text, chunks
 
-    return topic, context_text, chunks
+    print(f"[RAG] q={question!r} -> no context (topic={topic}, generic={is_generic_definition(question)})")
+    return topic, "", []
