@@ -9,10 +9,12 @@ import Combine
 import CoreML
 import PDFKit
 import NaturalLanguage
+import Hub
 
 struct AskResponse: Decodable {
     let answer: String
 }
+
 
 @MainActor
 class ChatViewModel: ObservableObject {
@@ -23,7 +25,7 @@ class ChatViewModel: ObservableObject {
     @Published var isModelLoading: Bool = true
     @Published var modelLoadProgress: Progress? = nil
     private var session: ChatSession?
-
+  
     init() {
         Task {
             self.isModelLoading = true
@@ -39,6 +41,7 @@ class ChatViewModel: ObservableObject {
             } catch {
                 print("Model loading failed: \(error)")
             }
+            
             self.isModelLoading = false
         }
     }
@@ -88,7 +91,6 @@ class ChatViewModel: ObservableObject {
             let start = Date()
             do {
                 
-
                 let prompt = """
                                 <|im_start|>user
                                  Answer the Question:
