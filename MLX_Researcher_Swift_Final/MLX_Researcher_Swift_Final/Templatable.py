@@ -138,30 +138,26 @@ def ask(question: str) -> str:
         "If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. "
         "For general programming questions (like \"What is a function?\"), give a full explanation with a short example, but do not solve specific problems. "
         "If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.\n\n"
-        f"Context:\n{context_text}\n"
+#        f"Context:\n{context_text}\n"
         f"<|im_end|>\n"
         f"<|im_start|>user\n{question}\n<|im_end|>\n"
         f"<|im_start|>assistant\n"
     )
     sampler = make_sampler(
-    0.5,       # more variety than default 1.0
-    0.85,             # only consider top 90% probable tokens
-    xtc_threshold=0.5,       # trigger variety when top token prob > 60%
-    xtc_probability=0.5  # avoid repeating same 4-word sequences
+    0.6,       # more variety than default 1.0
+    0.9,             # only consider top 90% probable tokens
     )
     
     # ✅ Stream the response
     response_text = ""
     for response in stream_generate(
-        model,
-        tokenizer,
-        prompt,
+        model=model,
+        tokenizer=tokenizer,
+        prompt=prompt,
         max_tokens=512,
-        prompt_cache=prompt_cache,
         sampler=sampler,
     ):
         response_text += response.text
-    save_prompt_cache(cache_file, prompt_cache)
     log_conversation(question, response_text, topic)
     return response_text
 
