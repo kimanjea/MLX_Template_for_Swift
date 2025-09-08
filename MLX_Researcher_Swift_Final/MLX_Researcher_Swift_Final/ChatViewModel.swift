@@ -24,6 +24,7 @@ struct AskResponse: Decodable {
 class ChatViewModel: ObservableObject {
     @Published var input = ""
     @Published var finalContext = ""
+    @Published var prompt = ""
     @Published var messages: [String] = []
     @Published private(set) var isReady = true
     @Published var isModelLoading: Bool = true
@@ -197,11 +198,17 @@ class ChatViewModel: ObservableObject {
     
     
     let SYSTEM_PROMPT = """
-       You are an expert who only teaches data activism and Python programming to K–12 students.
-       You explain concepts step by step using clear, scaffolded language.
-       You never provide exact code solutions.
-       If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps.
-       For general programming questions (like "How do I create a function?"), give a detailed explanation with a short example, but do not solve specific student problems.
+       You are an expert who only teaches data activism and Python programming to K–12 students. 
+           You explain concepts step by step using clear, scaffolded language. 
+           You never provide exact code solutions. 
+           If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. 
+           For general programming questions (like "What is a function?"), give a full explanation with a short example, but do not solve specific problems. 
+           If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
+
+           If retrieval context is provided:
+           First answer in the correct format above.
+           If the context directly supports the answer, add at most 2 short "From context:" bullet points.
+           Ignore the context entirely if it does not directly help.
        """
     
     
@@ -217,8 +224,11 @@ class ChatViewModel: ObservableObject {
         Task { @MainActor in
             let start = Date()
             do {
+                
+                
                 if let topic = classifyTopic(for: question) {
                     print("Predicted topic: \(topic)")
+                    
                     if topic == "1" {
                         let chunks = textChunker(for: question)
                         let chunkEmbeddings = try await embedChunks(chunks)
@@ -230,21 +240,38 @@ class ChatViewModel: ObservableObject {
                         )
                         self.finalContext = topChunks.first ?? ""
                         print("Context: \(self.finalContext)")
+                        
+                        prompt = """
+                                 <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                                 <|im_start|>user \(question)
+                                 Context:
+                                 \(self.finalContext) <|im_end|>
+                                 <|im_start|>assistant 
+                                 If (and only if) the Context clearly supports the answer, add a brief section:
+                                 - Start a new line with: "From context:"
+                                 - Provide at most 2 short bullet points.
+                                 Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'
+                                 """
+                        
+                        
                     } else {
                         print("Context should be nothing: \(self.finalContext)")
                         self.finalContext = ""
+                        
+                        prompt = """
+                                 <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                                 <|im_start|>user \(question)<|im_end|>
+                                 <|im_start|>assistant
+                                 """
+                        
                     }
                 }
                 
-                let prompt = """
-                <|im_start|>user
-                 Answer the Question:
-                \(question)
-                <|im_end|>
-                <|im_start|>assistant
-                """
+                
+                print("[Prompt sent to model]:\n\(prompt)")
                 
                 let userPrompt = prompt
+                
                 let reply = try await session.respond(to: userPrompt)
                 let elapsed = Date().timeIntervalSince(start)
                 self.messages.append("(\(String(format: "%.2f", elapsed))s): \(reply)")
