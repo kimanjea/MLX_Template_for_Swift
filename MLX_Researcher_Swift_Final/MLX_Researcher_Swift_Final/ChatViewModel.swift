@@ -50,7 +50,11 @@ class ChatViewModel: ObservableObject {
                         self?.modelLoadProgress = prog
                     }
                 })
-                self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters.init(temperature: 0.65,topP: 0.9 ))
+                self.session = ChatSession(model, generateParameters: .init(
+                    maxTokens: 600,
+                    temperature: 0.4,
+                    topP: 0.9
+                ))
             } catch {
                 print("Model loading failed: \(error)")
             }
@@ -107,8 +111,8 @@ class ChatViewModel: ObservableObject {
         }
         
         // STEP 2: Split into manageable chunks (like RecursiveCharacterTextSplitter)
-        let chunkSize = 500
-        let chunkOverlap = 20
+        let chunkSize = 100
+        let chunkOverlap = 5
         var chunks: [String] = []
         
         for text in allText {
@@ -247,15 +251,12 @@ class ChatViewModel: ObservableObject {
                                  Context:
                                  \(self.finalContext) <|im_end|>
                                  <|im_start|>assistant 
-                                 If (and only if) the Context clearly supports the answer, add a brief section:
-                                 - Start a new line with: "From context:"
-                                 - Provide at most 2 short bullet points.
-                                 Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'
+                                 
                                  """
                         
                         
                     } else {
-                        print("Context should be nothing: \(self.finalContext)")
+                        print("Context: \(self.finalContext)")
                         self.finalContext = ""
                         
                         prompt = """
