@@ -25,13 +25,8 @@ class ChatViewModel: ObservableObject {
     You explain concepts step by step using clear, scaffolded language. 
     You never provide exact code solutions. 
     If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. 
-    For general programming questions (like "What is a function?"), give a full explanation with a short example, but do not solve specific problems. 
+    For general programming questions (like "How to create a function?"), give a full explanation with a short example, but do not solve specific problems. 
     If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
-
-    If retrieval context is provided:
-    First answer in the correct format above.
-    If the context directly supports the answer, add at most 2 short "From context:" bullet points.
-    Ignore the context entirely if it does not directly help.
     """
 
     init() {
@@ -41,7 +36,7 @@ class ChatViewModel: ObservableObject {
                 model,
                 generateParameters: .init(
                     maxTokens: 600,
-                    temperature: 0.4,
+                    temperature: 0.3,
                     topP: 0.9
                 )
             )
@@ -72,7 +67,13 @@ class ChatViewModel: ObservableObject {
                 }
                 let cls = try JSONDecoder().decode(ClassifyResponse.self, from: data)
                 let chunks = (cls.topic == "on-topic") ? (cls.context_chunks ?? []) : []
-                let contextText = chunks.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                var contextText = chunks.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // If the question looks like a code chunk with '?', force contextText empty (no RAG for code explanation)
+                let isCodeQuestionWithUnknowns = userText.contains("?") && userText.contains(":")
+                if isCodeQuestionWithUnknowns {
+                    contextText = ""
+                }
 
                 print("[Swift RAG debug] topic=\(cls.topic)  context.len=\(contextText.count)")
 
@@ -94,10 +95,7 @@ class ChatViewModel: ObservableObject {
                     Context:
                     \(contextText)<|im_end|>
                     <|im_start|>assistant 
-                    If (and only if) the Context clearly supports the answer, add a brief section:
-                    - Start a new line with: "From context:"
-                    - Provide at most 2 short bullet points.
-                    Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'
+                    If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not highlight or label these as 'context'—just incorporate them naturally. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.
                     """
                 }
 

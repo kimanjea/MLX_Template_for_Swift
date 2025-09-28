@@ -171,7 +171,6 @@ struct ContentView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 30))
                 
                 Picker("Model", selection: boundModel) {
-                    Text("Gemma").tag("Gemma")
                     Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
                     Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
                 }
