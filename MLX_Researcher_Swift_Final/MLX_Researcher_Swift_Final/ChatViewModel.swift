@@ -206,16 +206,9 @@ class ChatViewModel: ObservableObject {
            You explain concepts step by step using clear, scaffolded language. 
            You never provide exact code solutions. 
            If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. 
-           For general programming questions (like "What is a function?"), give a full explanation with a short example, but do not solve specific problems. 
+           For general programming questions (like "How to create a function?"), give a full explanation with a short example, but do not solve specific problems. 
            If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
-
-           If retrieval context is provided:
-           First answer in the correct format above.
-           If the context directly supports the answer, add at most 2 short "From context:" bullet points.
-           Ignore the context entirely if it does not directly help.
        """
-    
-    
     
     func send() {
         
@@ -229,45 +222,49 @@ class ChatViewModel: ObservableObject {
             let start = Date()
             do {
                 
-                
                 if let topic = classifyTopic(for: question) {
                     print("Predicted topic: \(topic)")
                     
                     if topic == "1" {
                         let chunks = textChunker(for: question)
                         let chunkEmbeddings = try await embedChunks(chunks)
-                        let topChunks = try await retrieveContext(
+                        var topChunks = try await retrieveContext(
                             question: question,
                             chunks: chunks,
                             chunkEmbeddings: chunkEmbeddings,
                             topK: 1 // Change to more for more context
                         )
-                        self.finalContext = topChunks.first ?? ""
-                        print("Context: \(self.finalContext)")
+                        var contextText = topChunks.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
                         
-                        prompt = """
-                                 <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
-                                 <|im_start|>user \(question)
-                                 Context:
-                                 \(self.finalContext) <|im_end|>
-                                 <|im_start|>assistant 
-                                 
-                                 """
+                        if question.contains("?") && question.contains(":") {
+                            contextText = ""
+                        }
                         
+                        // Avoid unhelpful or vague context and favor base model knowledge for general queries.
+                        let loweredContext = contextText.lowercased().replacingOccurrences(of: "\n", with: "")
+                        if contextText.count < 20 || ["e", ".", "", "for example:"].contains(loweredContext) {
+                            contextText = ""
+                        }
                         
-                    } else {
-                        print("Context: \(self.finalContext)")
-                        self.finalContext = ""
-                        
-                        prompt = """
-                                 <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
-                                 <|im_start|>user \(question)<|im_end|>
-                                 <|im_start|>assistant
-                                 """
-                        
+                        if contextText.isEmpty {
+                            self.finalContext = ""
+                            prompt = """
+                                     <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                                     <|im_start|>user \(question)<|im_end|>
+                                     <|im_start|>assistant
+                                     """
+                        } else {
+                            self.finalContext = contextText
+                            prompt = """
+                                     <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                                     <|im_start|>user \(question)
+                                     \nContext:\n\(contextText)<|im_end|>
+                                     <|im_start|>assistant 
+                                     If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.
+                                    """
+                        }
                     }
                 }
-                
                 
                 print("[Prompt sent to model]:\n\(prompt)")
                 
@@ -275,7 +272,7 @@ class ChatViewModel: ObservableObject {
                 
                 let reply = try await session.respond(to: userPrompt)
                 let elapsed = Date().timeIntervalSince(start)
-                self.messages.append("(\(String(format: "%.2f", elapsed))s): \(reply)")
+                self.messages.append("Bot (\(String(format: "%.2f", elapsed))s): \(reply)")
             } catch {
                 let elapsed = Date().timeIntervalSince(start)
                 self.messages.append("Error (\(String(format: "%.2f", elapsed))s): \(error.localizedDescription)")
