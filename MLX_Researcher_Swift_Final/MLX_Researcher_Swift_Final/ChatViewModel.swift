@@ -52,7 +52,7 @@ class ChatViewModel: ObservableObject {
                 })
                 self.session = ChatSession(model, generateParameters: .init(
                     maxTokens: 600,
-                    temperature: 0.3,
+                    temperature: 0.5,
                     topP: 0.8
                 ))
             } catch {
@@ -273,7 +273,7 @@ class ChatViewModel: ObservableObject {
                 
                 let reply = try await session.respond(to: userPrompt)
                 let elapsed = Date().timeIntervalSince(start)
-                self.messages.append("Bot (\(String(format: "%.2f", elapsed))s): \(reply)")
+                self.messages.append("(\(String(format: "%.2f", elapsed))s): \(reply)")
             } catch {
                 let elapsed = Date().timeIntervalSince(start)
                 self.messages.append("Error (\(String(format: "%.2f", elapsed))s): \(error.localizedDescription)")
