@@ -52,8 +52,8 @@ class ChatViewModel: ObservableObject {
                 })
                 self.session = ChatSession(model, generateParameters: .init(
                     maxTokens: 600,
-                    temperature: 0.4,
-                    topP: 0.9
+                    temperature: 0.3,
+                    topP: 0.8
                 ))
             } catch {
                 print("Model loading failed: \(error)")
@@ -256,12 +256,13 @@ class ChatViewModel: ObservableObject {
                         } else {
                             self.finalContext = contextText
                             prompt = """
-                                     <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
-                                     <|im_start|>user \(question)
-                                     \nContext:\n\(contextText)<|im_end|>
-                                     <|im_start|>assistant 
-                                     If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.
-                                    """
+                            <|im_start|>system \(SYSTEM_PROMPT). If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>
+                            <|im_start|>user \(question)
+                            Context:
+                            \(contextText)<|im_end|>
+                            <|im_start|>assistant
+                            """
+
                         }
                     }
                 }
