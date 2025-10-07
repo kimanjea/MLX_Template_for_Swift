@@ -36,8 +36,8 @@ class ChatViewModel: ObservableObject {
                 model,
                 generateParameters: .init(
                     maxTokens: 600,
-                    temperature: 0.3,
-                    topP: 0.9
+                    temperature: 0.4,
+                    topP: 0.8
                 )
             )
         }
@@ -89,13 +89,12 @@ class ChatViewModel: ObservableObject {
                 } else {
                     // Answer-first + short, optional “From context” section
                     prompt = """
-                    <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                    <|im_start|>system \(SYSTEM_PROMPT)If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not highlight or label these as 'context'—just incorporate them naturally. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>\
                     <|im_start|>user \(userText)
 
                     Context:
                     \(contextText)<|im_end|>
-                    <|im_start|>assistant 
-                    If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not highlight or label these as 'context'—just incorporate them naturally. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.
+                    <|im_start|>assistant
                     """
                 }
 
