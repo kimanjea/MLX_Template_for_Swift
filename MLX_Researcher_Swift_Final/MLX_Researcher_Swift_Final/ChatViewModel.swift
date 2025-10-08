@@ -50,7 +50,7 @@ class ChatViewModel: ObservableObject {
                         self?.modelLoadProgress = prog
                     }
                 })
-                self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters.init(temperature: 0.65,topP: 0.9 ))
+                self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters.init(temperature: 0.3,topP: 0.8 ))
             } catch {
                 print("Model loading failed: \(error)")
             }
@@ -107,8 +107,8 @@ class ChatViewModel: ObservableObject {
         }
         
         // STEP 2: Split into manageable chunks (like RecursiveCharacterTextSplitter)
-        let chunkSize = 500
-        let chunkOverlap = 20
+        let chunkSize = 100
+        let chunkOverlap = 5
         var chunks: [String] = []
         
         for text in allText {
@@ -202,7 +202,7 @@ class ChatViewModel: ObservableObject {
            You explain concepts step by step using clear, scaffolded language. 
            You never provide exact code solutions. 
            If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. 
-           For general programming questions (like "How to create a function?"), give a full explanation with a short example, but do not solve specific problems. 
+           For general programming questions (like "How to create a function?"), give a full explanation with a short example, but do not solve specific problems.  
            If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
        """
     
@@ -230,28 +230,25 @@ class ChatViewModel: ObservableObject {
                             chunkEmbeddings: chunkEmbeddings,
                             topK: 1 // Change to more for more context
                         )
-                        var contextText = topChunks.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                        
+                        self.finalContext = topChunks.first ?? ""
                         
                         prompt = """
-                                 <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                                 <|im_start|>system \(SYSTEM_PROMPT). If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>\
                                  <|im_start|>user \(question)
                                  Context:
                                  \(self.finalContext) <|im_end|>
                                  <|im_start|>assistant 
-                                 If (and only if) the Context clearly supports the answer, add a brief section:
-                                 - Start a new line with: "From context:"
-                                 - Provide at most 2 short bullet points.
-                                 Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'
                                  """
                         
-                        // Avoid unhelpful or vague context and favor base model knowledge for general queries.
-                        let loweredContext = contextText.lowercased().replacingOccurrences(of: "\n", with: "")
-                        if contextText.count < 20 || ["e", ".", "", "for example:"].contains(loweredContext) {
-                            contextText = ""
-                        }
-                        
+//                        // Avoid unhelpful or vague context and favor base model knowledge for general queries.
+//                        let loweredContext = contextText.lowercased().replacingOccurrences(of: "\n", with: "")
+//                        if contextText.count < 20 || ["e", ".", "", "for example:"].contains(loweredContext) {
+//                            contextText = ""
+//                        }
+//                        
                     } else {
-                        print("Context should be nothing: \(self.finalContext)")
+                        
                         self.finalContext = ""
                         
                         prompt = """
@@ -263,7 +260,7 @@ class ChatViewModel: ObservableObject {
                     }
                 }
                 
-                print("[Prompt sent to model]:\n\(prompt)")
+                print("[Prompt sent to model]:\n\(prompt) && this is context by itself \(self.finalContext)")
                 
                 let userPrompt = prompt
                 
