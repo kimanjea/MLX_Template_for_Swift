@@ -168,6 +168,30 @@ struct ContentView: View {
         }
     }
     
+    private var embeddermodelLoadingOverlay: some View {
+        Group {
+            if vm.isEmbedModelLoading {
+                if let progress = vm.embedModelProgress {
+                    ProgressView(value: progress.fractionCompleted) {
+                        Text("Embedder Model Loading... \(Int(progress.fractionCompleted * 100))%")
+                    }
+                    .progressViewStyle(.linear)
+                    .padding()
+                    .animation(.default, value: progress.fractionCompleted)
+                } else {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(1.3)
+                        .padding()
+                        .clipShape(Circle())
+                        .shadow(radius: 4)
+                }
+            }
+        }
+    }
+    
+    
+    
     // MARK: - Home View (Chat Interface)
     private var homeView: some View {
         VStack(spacing: 0) {
@@ -220,6 +244,7 @@ struct ContentView: View {
             ChatUISessions[index].messages = newMessages
         }
         .overlay(modelLoadingOverlay)
+        .overlay(embeddermodelLoadingOverlay)
         
     }
     
