@@ -240,25 +240,19 @@ class ChatViewModel: ObservableObject {
                             question: question,
                             chunks: chunks,
                             chunkEmbeddings: chunkEmbeddings,
-                            topK: 1 // Change to more for more context
+                            topK: 1 
                         )
                         self.finalContext = topChunks.first ?? ""
-                        print("Context: \(self.finalContext)")
                         
                         prompt = """
                                  <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
                                  <|im_start|>user \(question)
-                                 Context:
-                                 \(self.finalContext) <|im_end|>
                                  <|im_start|>assistant 
-                                 
                                  """
                         
                         
                     } else {
-                        print("Context: \(self.finalContext)")
-                        self.finalContext = ""
-                        
+                                               
                         prompt = """
                                  <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
                                  <|im_start|>user \(question)<|im_end|>
