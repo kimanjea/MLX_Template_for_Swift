@@ -7,9 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01F423D82E890BB4007B3D3A /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = 01F423D72E890BB4007B3D3A /* MLXEmbedders */; };
+		01F423DA2E890BB4007B3D3A /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 01F423D92E890BB4007B3D3A /* MLXLMCommon */; };
+		01F423DC2E890BB4007B3D3A /* MLXMNIST in Frameworks */ = {isa = PBXBuildFile; productRef = 01F423DB2E890BB4007B3D3A /* MLXMNIST */; };
+		01F423DE2E890BB4007B3D3A /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = 01F423DD2E890BB4007B3D3A /* MLXVLM */; };
 		1D396A832E42BD7F008839C0 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 1D396A822E42BD7F008839C0 /* MLX */; };
 		1D396A852E42BD82008839C0 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 1D396A842E42BD82008839C0 /* MLXLLM */; };
-		4CE2CC2A2E5FB399005249C1 /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = 4CE2CC292E5FB399005249C1 /* MLXEmbedders */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,8 +62,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				1D396A852E42BD82008839C0 /* MLXLLM in Frameworks */,
+				01F423DC2E890BB4007B3D3A /* MLXMNIST in Frameworks */,
+				01F423DE2E890BB4007B3D3A /* MLXVLM in Frameworks */,
 				1D396A832E42BD7F008839C0 /* MLX in Frameworks */,
-				4CE2CC2A2E5FB399005249C1 /* MLXEmbedders in Frameworks */,
+				01F423DA2E890BB4007B3D3A /* MLXLMCommon in Frameworks */,
+				01F423D82E890BB4007B3D3A /* MLXEmbedders in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -131,7 +137,10 @@
 			packageProductDependencies = (
 				1D396A822E42BD7F008839C0 /* MLX */,
 				1D396A842E42BD82008839C0 /* MLXLLM */,
-				4CE2CC292E5FB399005249C1 /* MLXEmbedders */,
+				01F423D72E890BB4007B3D3A /* MLXEmbedders */,
+				01F423D92E890BB4007B3D3A /* MLXLMCommon */,
+				01F423DB2E890BB4007B3D3A /* MLXMNIST */,
+				01F423DD2E890BB4007B3D3A /* MLXVLM */,
 			);
 			productName = MLX_Researcher_Swift_Final;
 			productReference = 1D396A422E42BCAB008839C0 /* MLX_Researcher_Swift_Final.app */;
@@ -416,8 +425,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = 8JWK33DY4R;
+				DEVELOPMENT_TEAM = V27HJX4NAB;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_FILE_ACCESS_MOVIES_FOLDER = readwrite;
@@ -476,8 +484,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = 8JWK33DY4R;
+				DEVELOPMENT_TEAM = V27HJX4NAB;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_FILE_ACCESS_MOVIES_FOLDER = readwrite;
@@ -535,7 +542,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8JWK33DY4R;
+				DEVELOPMENT_TEAM = V27HJX4NAB;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
@@ -561,7 +568,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8JWK33DY4R;
+				DEVELOPMENT_TEAM = V27HJX4NAB;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
@@ -586,7 +593,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8JWK33DY4R;
+				DEVELOPMENT_TEAM = V27HJX4NAB;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
@@ -611,7 +618,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8JWK33DY4R;
+				DEVELOPMENT_TEAM = V27HJX4NAB;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
@@ -692,6 +699,22 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		01F423D72E890BB4007B3D3A /* MLXEmbedders */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXEmbedders;
+		};
+		01F423D92E890BB4007B3D3A /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXLMCommon;
+		};
+		01F423DB2E890BB4007B3D3A /* MLXMNIST */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXMNIST;
+		};
+		01F423DD2E890BB4007B3D3A /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXVLM;
+		};
 		1D396A822E42BD7F008839C0 /* MLX */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 1D396A7F2E42BD65008839C0 /* XCRemoteSwiftPackageReference "mlx-swift" */;
@@ -701,11 +724,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1D396A802E42BD70008839C0 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
 			productName = MLXLLM;
-		};
-		4CE2CC292E5FB399005249C1 /* MLXEmbedders */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 1D396A802E42BD70008839C0 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
-			productName = MLXEmbedders;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
