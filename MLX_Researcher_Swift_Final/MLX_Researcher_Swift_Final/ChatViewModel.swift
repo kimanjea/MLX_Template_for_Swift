@@ -49,7 +49,7 @@ class ChatViewModel: ObservableObject {
                         self?.modelLoadProgress = prog
                     }
                 })
-                self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters(maxTokens: 600, maxKVSize: 1024, temperature: 0.3, topP: 0.8))
+                self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters(maxTokens: 600, temperature: 0.3, topP: 0.8))
             } catch {
                 print("Model loading failed: \(error)")
             }
@@ -233,7 +233,7 @@ class ChatViewModel: ObservableObject {
                         self.finalContext = topChunks.first ?? ""
                         
                         prompt = """
-                                 <|im_start|>system \(SYSTEM_PROMPT). If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>\
+                                 <|im_start|>system \(SYSTEM_PROMPT). If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>
                                  <|im_start|>user \(question)
                                  <|im_start|>assistant 
                                  """
@@ -245,15 +245,13 @@ class ChatViewModel: ObservableObject {
                         self.finalContext = ""
                         
                         prompt = """
-                                 <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                                 <|im_start|>system \(SYSTEM_PROMPT). If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>
                                  <|im_start|>user \(question)<|im_end|>
                                  <|im_start|>assistant
                                  """
-                        
-                    }
+                     }
                 }
-                
-                print("[Prompt sent to model]:\n\(prompt) && this is context by itself \(self.finalContext)")
+
                 
                 let userPrompt = prompt
                 
