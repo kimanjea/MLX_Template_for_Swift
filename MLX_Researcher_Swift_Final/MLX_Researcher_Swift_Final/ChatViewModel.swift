@@ -50,11 +50,7 @@ class ChatViewModel: ObservableObject {
                         self?.modelLoadProgress = prog
                     }
                 })
-                self.session = ChatSession(model, generateParameters: .init(
-                    maxTokens: 600,
-                    temperature: 0.5,
-                    topP: 0.8
-                ))
+                self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters.init(temperature: 0.65,topP: 0.9 ))
             } catch {
                 print("Model loading failed: \(error)")
             }
@@ -111,8 +107,8 @@ class ChatViewModel: ObservableObject {
         }
         
         // STEP 2: Split into manageable chunks (like RecursiveCharacterTextSplitter)
-        let chunkSize = 100
-        let chunkOverlap = 5
+        let chunkSize = 500
+        let chunkOverlap = 20
         var chunks: [String] = []
         
         for text in allText {
@@ -236,9 +232,17 @@ class ChatViewModel: ObservableObject {
                         )
                         var contextText = topChunks.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
                         
-                        if question.contains("?") && question.contains(":") {
-                            contextText = ""
-                        }
+                        prompt = """
+                                 <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                                 <|im_start|>user \(question)
+                                 Context:
+                                 \(self.finalContext) <|im_end|>
+                                 <|im_start|>assistant 
+                                 If (and only if) the Context clearly supports the answer, add a brief section:
+                                 - Start a new line with: "From context:"
+                                 - Provide at most 2 short bullet points.
+                                 Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'
+                                 """
                         
                         // Avoid unhelpful or vague context and favor base model knowledge for general queries.
                         let loweredContext = contextText.lowercased().replacingOccurrences(of: "\n", with: "")
@@ -246,24 +250,16 @@ class ChatViewModel: ObservableObject {
                             contextText = ""
                         }
                         
-                        if contextText.isEmpty {
-                            self.finalContext = ""
-                            prompt = """
-                                     <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
-                                     <|im_start|>user \(question)<|im_end|>
-                                     <|im_start|>assistant
-                                     """
-                        } else {
-                            self.finalContext = contextText
-                            prompt = """
-                            <|im_start|>system \(SYSTEM_PROMPT). If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>
-                            <|im_start|>user \(question)
-                            Context:
-                            \(contextText)<|im_end|>
-                            <|im_start|>assistant
-                            """
-
-                        }
+                    } else {
+                        print("Context should be nothing: \(self.finalContext)")
+                        self.finalContext = ""
+                        
+                        prompt = """
+                                 <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                                 <|im_start|>user \(question)<|im_end|>
+                                 <|im_start|>assistant
+                                 """
+                        
                     }
                 }
                 
