@@ -35,7 +35,6 @@ class ChatViewModel: ObservableObject {
     private var session: ChatSession?
     
     
-    
     init() {
         Task {
             self.isModelLoading = true
@@ -50,7 +49,7 @@ class ChatViewModel: ObservableObject {
                         self?.modelLoadProgress = prog
                     }
                 })
-                self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters.init(temperature: 0.3,topP: 0.8 ))
+                self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters(maxTokens: 600, maxKVSize: 1024, temperature: 0.3, topP: 0.8))
             } catch {
                 print("Model loading failed: \(error)")
             }
@@ -233,6 +232,11 @@ class ChatViewModel: ObservableObject {
                         
                         self.finalContext = topChunks.first ?? ""
                         
+                        if question.contains("?") && question.contains(":")
+                        {
+                            self.finalContext = ""
+                        }
+                        
                         prompt = """
                                  <|im_start|>system \(SYSTEM_PROMPT). If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>\
                                  <|im_start|>user \(question)
@@ -241,12 +245,7 @@ class ChatViewModel: ObservableObject {
                                  <|im_start|>assistant 
                                  """
                         
-//                        // Avoid unhelpful or vague context and favor base model knowledge for general queries.
-//                        let loweredContext = contextText.lowercased().replacingOccurrences(of: "\n", with: "")
-//                        if contextText.count < 20 || ["e", ".", "", "for example:"].contains(loweredContext) {
-//                            contextText = ""
-//                        }
-//                        
+
                     } else {
                         
                         self.finalContext = ""
