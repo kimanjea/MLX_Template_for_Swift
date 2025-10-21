@@ -66,9 +66,9 @@ struct ContentView: View {
     private let chatColors: [Color] = [
         Color(hex: "#DE0058"),
         Color(hex: "#00B500"),
-        Color(hex: "#EDC300"),
         Color(hex: "#1266E2"),
-        Color(hex: "#663887")
+        Color(hex: "#663887"),
+        Color(hex: "#DE0058")
     ]
     
     private var boundModel: Binding<String> {
@@ -216,13 +216,13 @@ struct ContentView: View {
                 .buttonStyle(.borderedProminent)
                 .clipShape(RoundedRectangle(cornerRadius: 30))
                 
-                Picker("Model", selection: boundModel) {
-                    Text("Gemma").tag("Gemma")
-                    Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
-                    Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
-                }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 180)
+//                Picker("Model", selection: boundModel) {
+//                    Text("Gemma").tag("Gemma")
+//                    Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
+//                    Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
+//                }
+//                .pickerStyle(.menu)
+//                .frame(maxWidth: 180)
             }
             .padding([.top, .horizontal])
             
@@ -234,7 +234,7 @@ struct ContentView: View {
             inputView
         }
         .id(selectedSessionID ?? UUID())
-        .navigationTitle("Chat")
+        .navigationTitle("Avela-GPT")
         .onChange(of: vm.messages) { newMessages in
             // 4. Update current session's messages when vm.messages changes (e.g. after sending)
             guard let sessionID = selectedSessionID,
@@ -314,7 +314,7 @@ struct ContentView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(Array(vm.messages.enumerated()), id: \.offset) { index, message in
-                        MessageBubble(message: message, color: chatColors[index % chatColors.count])
+                        MessageBubble(message: message, colorIndex: index, chatColors: chatColors)
                             .id(index)
                     }
                 }
@@ -334,19 +334,34 @@ struct ContentView: View {
         ZStack {
             VStack(spacing: 0) {
                 Divider()
-                HStack(spacing: 12) {
+                HStack(alignment: .top, spacing: 16) {
                     TextField("Type a message...", text: $vm.input, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(1...4)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 16))
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 24)
+                        .frame(minHeight: 120, alignment: .topLeading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 28)
+                                .fill(Color.gray.opacity(0.1))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 28)
+                                .stroke(Color.gray.opacity(0.3), lineWidth: 1.5)
+                        )
+                        .lineLimit(1...12)
                         .disabled(!vm.isReady)
+                    
                     Button("Send") {
                         vm.send()
                     }
                     .buttonStyle(.borderedProminent)
                     .clipShape(RoundedRectangle(cornerRadius: 30))
+                    .padding(.top, 20)
                     .disabled(vm.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !vm.isReady)
                 }
-                .padding()
+                .padding(.horizontal, 24)
+                .padding(.vertical, 24)
                 
                 if !vm.isReady {
                     Text("Thinking for \(thinkingElapsed) second(s)...")
@@ -605,7 +620,8 @@ struct ContentView: View {
 // Message bubble component
 struct MessageBubble: View {
     let message: String
-    let color: Color
+    let colorIndex: Int
+    let chatColors: [Color]
     
     private var isUser: Bool {
         message.starts(with: "You:")
@@ -621,25 +637,54 @@ struct MessageBubble: View {
     }
     
     var body: some View {
-        HStack {
+        HStack(alignment: .top, spacing: 12) {
             if isUser {
                 Spacer(minLength: 60)
-            }
-            
-            Text(displayText)
-                .font(.body)
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(color)
-                )
-            
-            if !isUser {
+
+                // User message + icon
+                Text(displayText)
+                    .font(.body)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(chatColors[colorIndex % chatColors.count])
+                    )
+
+                // Person icon for user
+                Image(systemName: "person.fill")
+                    .foregroundColor(.white)
+                    .background(
+                        Circle()
+                            .fill(Color.gray)
+                            .frame(width: 36, height: 36)
+                    )
+                    .frame(width: 36, height: 36)
+            } else {
+                // Logo icon for bot
+                Image("Logo") // 🖼️ Your logo image asset name
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+                    .background(Circle().stroke(Color.gray.opacity(0.3), lineWidth: 1))
+
+                // Bot message
+                Text(displayText)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Color.gray.opacity(0.2))
+                    )
+
                 Spacer(minLength: 60)
             }
         }
+
     }
 }
 
