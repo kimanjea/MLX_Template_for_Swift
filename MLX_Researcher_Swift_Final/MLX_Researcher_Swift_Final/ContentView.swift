@@ -101,6 +101,31 @@ struct ContentView: View {
                 homeView
             }
             
+            TabSection {
+                Tab(value: "logo") {
+                    EmptyView()
+                } label: {
+                    VStack(spacing: 8) {
+                        Image("Logo")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 40, height: 40)
+                        Text("AVELA AI")
+                            .font(.caption.bold())
+                    }
+                    .padding(.vertical, 8)
+                }
+                .disabled(true)
+            }
+            .defaultVisibility(.visible, for: .tabBar)
+            
+            TabSection("Model") {
+                Tab("Select Model", systemImage: "cpu") {
+                    modelPickerView
+                }
+            }
+            .defaultVisibility(.visible, for: .tabBar)
+            
             TabSection("History") {
                 Tab("Recent", systemImage: "clock") {
                     historyView
@@ -145,25 +170,100 @@ struct ContentView: View {
         }
     }
     
+    // MARK: - Model Picker View (in Sidebar)
+    private var modelPickerView: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            Image("Logo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 100, height: 100)
+                .shadow(radius: 8)
+            
+            Image(systemName: "cpu")
+                .font(.system(size: 50))
+                .foregroundStyle(.blue.gradient)
+            
+            VStack(spacing: 8) {
+                Text("Select Model")
+                    .font(.title2.bold())
+                
+                Text("Choose an AI model for your conversation")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Picker("Model", selection: boundModel) {
+                Text("Gemma").tag("Gemma")
+                Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
+                Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: 200)
+            
+            Spacer()
+        }
+        .padding()
+        .navigationTitle("Model Selection")
+    }
+    
     // Added this computed property to reduce complexity in homeView
     private var modelLoadingOverlay: some View {
         Group {
             if vm.isModelLoading {
-                if let progress = vm.modelLoadProgress {
-                    ProgressView(value: progress.fractionCompleted) {
-                        Text("Model Loading... \(Int(progress.fractionCompleted * 100))%")
+                ZStack {
+                    // Blur background
+                    Color.black.opacity(0.6)
+                        .ignoresSafeArea()
+                    
+                    // Loading card
+                    VStack(spacing: 20) {
+                        Image("Logo")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 80, height: 80)
+                            .shadow(radius: 10)
+                        
+                        if let progress = vm.modelLoadProgress {
+                            VStack(spacing: 12) {
+                                Text("Loading Model...")
+                                    .font(.title3.bold())
+                                
+                                ProgressView(value: progress.fractionCompleted) {
+                                    Text("\(Int(progress.fractionCompleted * 100))%")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .progressViewStyle(.linear)
+                                .frame(width: 200)
+                                .tint(.blue)
+                            }
+                        } else {
+                            VStack(spacing: 12) {
+                                Text("Loading Model...")
+                                    .font(.title3.bold())
+                                
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .scaleEffect(1.2)
+                            }
+                        }
+                        
+                        Text("Please wait...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                     }
-                    .progressViewStyle(.linear)
-                    .padding()
-                    .animation(.default, value: progress.fractionCompleted)
-                } else {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(1.3)
-                        .padding()
-                        .clipShape(Circle())
-                        .shadow(radius: 4)
+                    .padding(40)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(.regularMaterial)
+                            .shadow(color: .black.opacity(0.3), radius: 20)
+                    )
                 }
+                .transition(.opacity)
+                .animation(.easeInOut, value: vm.isModelLoading)
             }
         }
     }
@@ -171,21 +271,55 @@ struct ContentView: View {
     private var embeddermodelLoadingOverlay: some View {
         Group {
             if vm.isEmbedModelLoading {
-                if let progress = vm.embedModelProgress {
-                    ProgressView(value: progress.fractionCompleted) {
-                        Text("Embedder Model Loading... \(Int(progress.fractionCompleted * 100))%")
+                ZStack {
+                    // Blur background
+                    Color.black.opacity(0.6)
+                        .ignoresSafeArea()
+                    
+                    // Loading card
+                    VStack(spacing: 20) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.system(size: 60))
+                            .foregroundStyle(.blue.gradient)
+                        
+                        if let progress = vm.embedModelProgress {
+                            VStack(spacing: 12) {
+                                Text("Loading Embedder...")
+                                    .font(.title3.bold())
+                                
+                                ProgressView(value: progress.fractionCompleted) {
+                                    Text("\(Int(progress.fractionCompleted * 100))%")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .progressViewStyle(.linear)
+                                .frame(width: 200)
+                                .tint(.blue)
+                            }
+                        } else {
+                            VStack(spacing: 12) {
+                                Text("Loading Embedder...")
+                                    .font(.title3.bold())
+                                
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .scaleEffect(1.2)
+                            }
+                        }
+                        
+                        Text("Preparing embeddings...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                     }
-                    .progressViewStyle(.linear)
-                    .padding()
-                    .animation(.default, value: progress.fractionCompleted)
-                } else {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(1.3)
-                        .padding()
-                        .clipShape(Circle())
-                        .shadow(radius: 4)
+                    .padding(40)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(.regularMaterial)
+                            .shadow(color: .black.opacity(0.3), radius: 20)
+                    )
                 }
+                .transition(.opacity)
+                .animation(.easeInOut, value: vm.isEmbedModelLoading)
             }
         }
     }
@@ -521,7 +655,6 @@ struct ContentView: View {
                     // Clear history action
                 } label: {
                     Label("Clear All History", systemImage: "trash")
-                        .clipShape(RoundedRectangle(cornerRadius: 30))
                 }
                 Divider()
 
@@ -591,7 +724,6 @@ struct ContentView: View {
                 } label: {
                     Label("Clear All History", systemImage: "trash")
                         .foregroundColor(.red)
-                        .clipShape(RoundedRectangle(cornerRadius: 30))
                 }
             }
             Section("About") {
