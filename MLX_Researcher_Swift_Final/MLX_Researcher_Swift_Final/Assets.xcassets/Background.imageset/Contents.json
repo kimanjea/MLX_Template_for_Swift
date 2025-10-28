@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "Screenshot 2025-08-05 at 9.37.21 PM.png",
+      "filename" : "Background 2.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -16,30 +16,37 @@
       "scale" : "3x"
     },
     {
+      "filename" : "Background 5.png",
       "idiom" : "iphone",
       "scale" : "1x"
     },
     {
+      "filename" : "Background 6.png",
       "idiom" : "iphone",
       "scale" : "2x"
     },
     {
+      "filename" : "Background 7.png",
       "idiom" : "iphone",
       "scale" : "3x"
     },
     {
+      "filename" : "Background 3.png",
       "idiom" : "ipad",
       "scale" : "1x"
     },
     {
+      "filename" : "Background 4.png",
       "idiom" : "ipad",
       "scale" : "2x"
     },
     {
+      "filename" : "Background 8.png",
       "idiom" : "mac",
       "scale" : "1x"
     },
     {
+      "filename" : "Background 9.png",
       "idiom" : "mac",
       "scale" : "2x"
     }

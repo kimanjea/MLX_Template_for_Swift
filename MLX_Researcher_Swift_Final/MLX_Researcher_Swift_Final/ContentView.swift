@@ -97,48 +97,36 @@ struct ContentView: View {
     
     var body: some View {
         TabView {
-            Tab("Home", systemImage: "house.fill") {
+            // Home Tab
+            NavigationStack {
                 homeView
             }
-            
-            TabSection {
-                Tab(value: "logo") {
-                    EmptyView()
-                } label: {
-                    VStack(spacing: 8) {
-                        Image("Logo")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 40, height: 40)
-                        Text("AVELA AI")
-                            .font(.caption.bold())
-                    }
-                    .padding(.vertical, 8)
-                }
-                .disabled(true)
+            .tabItem {
+                Label("Home", systemImage: "house.fill")
             }
-            .defaultVisibility(.visible, for: .tabBar)
             
-            TabSection("Model") {
-                Tab("Select Model", systemImage: "cpu") {
-                    modelPickerView
-                }
+            // Model Tab
+            NavigationStack {
+                modelPickerView
+                    .navigationTitle("Model Selection")
             }
-            .defaultVisibility(.visible, for: .tabBar)
+            .tabItem {
+                Label("Select Model", systemImage: "cpu")
+            }
             
-            TabSection("History") {
-                Tab("Recent", systemImage: "clock") {
-                    historyView
+            // History Tab
+            historyView
+                .tabItem {
+                    Label("History", systemImage: "clock")
                 }
-            }
-            .defaultVisibility(.hidden, for: .tabBar)
             
-            TabSection("Settings") {
-                Tab("Settings", systemImage: "gearshape") {
-                    settingsView
-                }
+            // Settings Tab
+            NavigationStack {
+                settingsView
             }
-            .defaultVisibility(.hidden, for: .tabBar)
+            .tabItem {
+                Label("Settings", systemImage: "gearshape")
+            }
         }
         .tabViewStyle(.sidebarAdaptable)
         .onAppear {
@@ -368,7 +356,7 @@ struct ContentView: View {
             inputView
         }
         .id(selectedSessionID ?? UUID())
-        .navigationTitle("Avela-GPT")
+        .navigationTitle("AVELA-CourseSLM")
         .onChange(of: vm.messages) { newMessages in
             // 4. Update current session's messages when vm.messages changes (e.g. after sending)
             guard let sessionID = selectedSessionID,
