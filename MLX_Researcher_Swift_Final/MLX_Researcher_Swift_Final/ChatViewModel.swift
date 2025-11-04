@@ -13,6 +13,7 @@ import CoreML
 import PDFKit
 import NaturalLanguage
 import Hub
+import NaturalLanguage
 
 
 struct AskResponse: Decodable {
@@ -105,21 +106,43 @@ class ChatViewModel: ObservableObject {
             }
         }
         
-        // STEP 2: Split into manageable chunks (like RecursiveCharacterTextSplitter)
-        let chunkSize = 100
-        let chunkOverlap = 5
+        // STEP 2: Use semanticChunker to split into meaningful chunks
         var chunks: [String] = []
         
         for text in allText {
-            var start = text.startIndex
-            while start < text.endIndex {
-                let end = text.index(start, offsetBy: chunkSize, limitedBy: text.endIndex) ?? text.endIndex
-                let chunk = String(text[start..<end])
-                chunks.append(chunk)
-                
-                // Advance start by chunkSize - chunkOverlap
-                start = text.index(start, offsetBy: chunkSize - chunkOverlap, limitedBy: text.endIndex) ?? text.endIndex
+            let semanticChunks = semanticChunker(text: text)
+            chunks.append(contentsOf: semanticChunks)
+        }
+        
+        return chunks
+    }
+    
+    /// Splits text into semantic chunks based on sentence boundaries and a maximum chunk length.
+    private func semanticChunker(text: String, maxChunkLength: Int = 1000) -> [String] {
+        var chunks: [String] = []
+        var currentChunk = ""
+        
+        let tokenizer = NLTokenizer(unit: .sentence)
+        tokenizer.string = text
+        
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+            let sentence = String(text[range])
+            if currentChunk.count + sentence.count + 1 <= maxChunkLength {
+                if !currentChunk.isEmpty {
+                    currentChunk += " "
+                }
+                currentChunk += sentence
+            } else {
+                if !currentChunk.isEmpty {
+                    chunks.append(currentChunk)
+                }
+                currentChunk = sentence
             }
+            return true
+        }
+        
+        if !currentChunk.isEmpty {
+            chunks.append(currentChunk)
         }
         
         return chunks
@@ -244,11 +267,15 @@ class ChatViewModel: ObservableObject {
                             self.finalContext = topChunks.first ?? ""
                             
                             prompt = """
-                            <|im_start|>system \(SYSTEM_PROMPT). If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>\
-                            <|im_start|>user \(question)
-                            Context:
-                            \(self.finalContext) <|im_end|>
-                            <|im_start|>assistant 
+                            <|im_start|>system \(SYSTEM_PROMPT) <|im_end|>
+                            <|im_start|>user 
+                            Question: \(question)
+
+                            background information (for your reference if relevant, do not quote directly unless needed): 
+                            \(self.finalContext)
+                            ---
+                            Please answer in your own words, explaining concepts clearly for a K–12 student. <|im_end|>
+                            <|im_start|>assistant
                             """
                         }
                         
