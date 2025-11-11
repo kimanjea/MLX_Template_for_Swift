@@ -89,7 +89,7 @@ class ChatViewModel: ObservableObject {
             
             if Task.isCancelled { return }
 
-            self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters(maxTokens: 600, temperature: 0.3, topP: 0.8))
+            self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters(maxTokens: 600, temperature: 0.4, topP: 0.8))
         } catch {
             if Task.isCancelled { return }
             print("Model loading failed: \(error)")
