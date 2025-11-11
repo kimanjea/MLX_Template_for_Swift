@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UniformTypeIdentifiers
 
 extension Color {
     init(hex: String) {
@@ -46,6 +47,10 @@ struct ContentView: View {
     // Added state for thinking timer
     @State private var thinkingStartDate: Date? = nil
     @State private var thinkingElapsed: Int = 0
+
+    // State for uploaded PDFs
+    @State private var uploadedPDFs: [URL] = []
+    @State private var isShowingFileImporter: Bool = false
     
     private let suggestedQuestions = [
         "What is data activism?",
@@ -112,6 +117,14 @@ struct ContentView: View {
             }
             .tabItem {
                 Label("Select Model", systemImage: "cpu")
+            }
+
+            // Upload PDF Tab (Drag & Drop)
+            NavigationStack {
+                uploadPDFView
+            }
+            .tabItem {
+                Label("Upload PDF", systemImage: "tray.and.arrow.down.fill")
             }
             
             // History Tab
@@ -510,6 +523,144 @@ struct ContentView: View {
             }
         }
     }
+
+    // MARK: - Upload PDF View (Drag & Drop)
+    private var uploadPDFView: some View {
+        VStack(spacing: 16) {
+            Text("Upload PDFs")
+                .font(.title2.bold())
+                .padding(.top)
+
+            // Drop target
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6]))
+                .foregroundColor(.blue.opacity(0.6))
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.blue.opacity(0.06))
+                )
+                .overlay(
+                    VStack(spacing: 8) {
+                        Image(systemName: "doc.richtext")
+                            .font(.system(size: 48, weight: .regular))
+                            .foregroundColor(.blue)
+                        Text("Drag & drop PDF files here")
+                            .font(.headline)
+                        Text("Or tap Browse to pick from files")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Button {
+                            isShowingFileImporter = true
+                        } label: {
+                            Label("Browse", systemImage: "folder")
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(.top, 6)
+                    }
+                    .padding()
+                )
+                .frame(maxWidth: 600, minHeight: 200)
+                .padding(.horizontal)
+                .onDrop(of: [UTType.pdf.identifier], isTargeted: nil) { providers in
+                    handleDrop(providers: providers)
+                }
+
+            if !uploadedPDFs.isEmpty {
+                List {
+                    Section("Uploaded PDFs (\(uploadedPDFs.count))") {
+                        ForEach(uploadedPDFs, id: \.self) { url in
+                            HStack {
+                                Image(systemName: "doc.richtext")
+                                    .foregroundColor(.blue)
+                                Text(url.lastPathComponent)
+                                    .lineLimit(1)
+                                Spacer()
+                                Button {
+                                    // Hook into your model here if desired:
+                                    // vm.ingest(pdfAt: url)
+                                } label: {
+                                    Text("Use")
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: 700, maxHeight: 300)
+                //.listStyle(.insetGrouped)
+            }
+
+            Spacer()
+        }
+        .padding()
+        .navigationTitle("Upload PDF")
+#if os(iOS)
+        .fileImporter(isPresented: $isShowingFileImporter, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
+            switch result {
+            case .success(let urls):
+                for url in urls {
+                    handleDroppedPDF(url: url)
+                }
+            case .failure:
+                break
+            }
+        }
+#endif
+#if os(macOS)
+        .sheet(isPresented: $isShowingFileImporter) {
+            MacOpenPanelView(allowedContentTypes: [.pdf]) { urls in
+                for url in urls {
+                    handleDroppedPDF(url: url)
+                }
+            }
+        }
+#endif
+    }
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        var handled = false
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.pdf.identifier) {
+#if os(iOS)
+            _ = provider.loadInPlaceFileRepresentation(forTypeIdentifier: UTType.pdf.identifier) { url, inPlace, error in
+                if let url {
+                    DispatchQueue.main.async {
+                        handleDroppedPDF(url: url)
+                    }
+                }
+            }
+#else
+            _ = provider.loadItem(forTypeIdentifier: UTType.pdf.identifier, options: nil) { (item, error) in
+                if let url = item as? URL {
+                    DispatchQueue.main.async {
+                        handleDroppedPDF(url: url)
+                    }
+                } else if let data = item as? Data {
+                    // Write to temp file for uniform handling
+                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("pdf")
+                    do {
+                        try data.write(to: tempURL)
+                        DispatchQueue.main.async {
+                            handleDroppedPDF(url: tempURL)
+                        }
+                    } catch {
+                        // Ignore write errors for now
+                    }
+                }
+            }
+#endif
+            handled = true
+        }
+        return handled
+    }
+
+    private func handleDroppedPDF(url: URL) {
+        // De-duplicate by file name + size if possible
+        if !uploadedPDFs.contains(url) {
+            uploadedPDFs.append(url)
+        }
+        // Hook into your VM if desired:
+        // vm.ingest(pdfAt: url)
+    }
     
     // MARK: - History View
     private var historyView: some View {
@@ -571,24 +722,6 @@ struct ContentView: View {
                         .padding(.vertical, 2)
                     }
                 }
-                /*
-                // 7. Remove older conversations for now
-                Section("Older Conversations") {
-                    ForEach(5..<10, id: \.self) { index in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Conversation \(index + 1)")
-                                .font(.headline)
-                            Text("Python and data analysis...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("\(index - 4) days ago")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-                */
             }
             .navigationTitle("History")
         }
@@ -820,6 +953,40 @@ extension Array {
         return chunks
     }
 }
+
+#if os(macOS)
+struct MacOpenPanelView: View {
+    let allowedContentTypes: [UTType]
+    let onPick: ([URL]) -> Void
+    
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        VStack {
+            Text("Select PDFs")
+                .font(.headline)
+            Button("Open…") {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = allowedContentTypes
+                panel.allowsMultipleSelection = true
+                panel.canChooseDirectories = false
+                panel.begin { response in
+                    if response == .OK {
+                        onPick(panel.urls)
+                    }
+                    dismiss()
+                }
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Cancel") {
+                dismiss()
+            }
+        }
+        .padding()
+        .frame(width: 320, height: 160)
+    }
+}
+#endif
 
 @main
 struct MLX_templateApp: App {
