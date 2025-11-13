@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UniformTypeIdentifiers
 
 extension Color {
     init(hex: String) {
@@ -8,12 +9,21 @@ extension Color {
         Scanner(string: hex).scanHexInt64(&int)
         let a, r, g, b: UInt64
         switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        case 3:
+            (a, r, g, b) = (255,
+                            (int >> 8) * 17,
+                            (int >> 4 & 0xF) * 17,
+                            (int & 0xF) * 17)
+        case 6:
+            (a, r, g, b) = (255,
+                            int >> 16,
+                            int >> 8 & 0xFF,
+                            int & 0xFF)
+        case 8:
+            (a, r, g, b) = (int >> 24,
+                            int >> 16 & 0xFF,
+                            int >> 8 & 0xFF,
+                            int & 0xFF)
         default:
             (a, r, g, b) = (255, 0, 0, 0)
         }
@@ -27,7 +37,6 @@ extension Color {
     }
 }
 
-// 1. Add a struct for a chat session at the top (for demo purposes).
 struct ChatUISession: Identifiable {
     let id: UUID
     var model: String
@@ -38,14 +47,17 @@ struct ChatUISession: Identifiable {
 struct ContentView: View {
     @StateObject private var vm = ChatViewModel()
     @State private var selectedModel: String = "Gemma"
-    // 2. Replace single session ID with multi-session state:
     @State private var ChatUISessions: [ChatUISession] = []
     @State private var selectedSessionID: UUID? = nil
     @State private var historyFilterModel: String = "Gemma"
     
-    // Added state for thinking timer
     @State private var thinkingStartDate: Date? = nil
     @State private var thinkingElapsed: Int = 0
+
+    // Upload tab state
+    @State private var showPDFImporter = false
+    @State private var selectedPDFName: String? = nil
+    @State private var isDropTargeted: Bool = false
     
     private let suggestedQuestions = [
         "What is data activism?",
@@ -97,7 +109,6 @@ struct ContentView: View {
     
     var body: some View {
         TabView {
-            // Home Tab
             NavigationStack {
                 homeView
             }
@@ -105,7 +116,6 @@ struct ContentView: View {
                 Label("Home", systemImage: "house.fill")
             }
             
-            // Model Tab
             NavigationStack {
                 modelPickerView
                     .navigationTitle("Model Selection")
@@ -114,13 +124,18 @@ struct ContentView: View {
                 Label("Select Model", systemImage: "cpu")
             }
             
-            // History Tab
             historyView
                 .tabItem {
                     Label("History", systemImage: "clock")
                 }
             
-            // Settings Tab
+            NavigationStack {
+                uploadCourseView
+            }
+            .tabItem {
+                Label("Upload Course", systemImage: "doc.badge.plus")
+            }
+            
             NavigationStack {
                 settingsView
             }
@@ -131,7 +146,12 @@ struct ContentView: View {
         .tabViewStyle(.sidebarAdaptable)
         .onAppear {
             if ChatUISessions.isEmpty {
-                let newSession = ChatUISession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                let newSession = ChatUISession(
+                    id: UUID(),
+                    model: selectedModel,
+                    messages: [],
+                    created: Date()
+                )
                 ChatUISessions.insert(newSession, at: 0)
                 selectedSessionID = newSession.id
                 vm.messages = []
@@ -149,7 +169,7 @@ struct ContentView: View {
             selectedModel = session.model
         }
         .onChange(of: vm.isReady) { newValue in
-            if newValue == false {
+            if !newValue {
                 thinkingStartDate = Date()
             } else {
                 thinkingStartDate = nil
@@ -158,7 +178,7 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Model Picker View (in Sidebar)
+    // MARK: - Model Picker View
     private var modelPickerView: some View {
         VStack(spacing: 24) {
             Spacer()
@@ -197,16 +217,13 @@ struct ContentView: View {
         .navigationTitle("Model Selection")
     }
     
-    // Added this computed property to reduce complexity in homeView
     private var modelLoadingOverlay: some View {
         Group {
             if vm.isModelLoading {
                 ZStack {
-                    // Blur background
                     Color.black.opacity(0.6)
                         .ignoresSafeArea()
                     
-                    // Loading card
                     VStack(spacing: 20) {
                         Image("Logo")
                             .resizable()
@@ -247,7 +264,8 @@ struct ContentView: View {
                     .background(
                         RoundedRectangle(cornerRadius: 20)
                             .fill(.regularMaterial)
-                            .shadow(color: .black.opacity(0.3), radius: 20)
+                            .shadow(color: .black.opacity(0.3),
+                                    radius: 20)
                     )
                 }
                 .transition(.opacity)
@@ -260,11 +278,9 @@ struct ContentView: View {
         Group {
             if vm.isEmbedModelLoading {
                 ZStack {
-                    // Blur background
                     Color.black.opacity(0.6)
                         .ignoresSafeArea()
                     
-                    // Loading card
                     VStack(spacing: 20) {
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.system(size: 60))
@@ -303,7 +319,8 @@ struct ContentView: View {
                     .background(
                         RoundedRectangle(cornerRadius: 20)
                             .fill(.regularMaterial)
-                            .shadow(color: .black.opacity(0.3), radius: 20)
+                            .shadow(color: .black.opacity(0.3),
+                                    radius: 20)
                     )
                 }
                 .transition(.opacity)
@@ -312,9 +329,7 @@ struct ContentView: View {
         }
     }
     
-    
-    
-    // MARK: - Home View (Chat Interface)
+    // MARK: - Home View
     private var homeView: some View {
         VStack(spacing: 0) {
             Image("Logo")
@@ -326,8 +341,12 @@ struct ContentView: View {
             
             HStack(spacing: 16) {
                 Button(action: {
-                    // 3. Append new session and select it
-                    let newSession = ChatUISession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                    let newSession = ChatUISession(
+                        id: UUID(),
+                        model: selectedModel,
+                        messages: [],
+                        created: Date()
+                    )
                     ChatUISessions.insert(newSession, at: 0)
                     selectedSessionID = newSession.id
                     vm.messages = []
@@ -337,14 +356,6 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .clipShape(RoundedRectangle(cornerRadius: 30))
-                
-//                Picker("Model", selection: boundModel) {
-//                    Text("Gemma").tag("Gemma")
-//                    Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
-//                    Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
-//                }
-//                .pickerStyle(.menu)
-//                .frame(maxWidth: 180)
             }
             .padding([.top, .horizontal])
             
@@ -358,7 +369,6 @@ struct ContentView: View {
         .id(selectedSessionID ?? UUID())
         .navigationTitle("AVELA-CourseSLM")
         .onChange(of: vm.messages) { newMessages in
-            // 4. Update current session's messages when vm.messages changes (e.g. after sending)
             guard let sessionID = selectedSessionID,
                   let index = ChatUISessions.firstIndex(where: { $0.id == sessionID }) else {
                 return
@@ -367,7 +377,6 @@ struct ContentView: View {
         }
         .overlay(modelLoadingOverlay)
         .overlay(embeddermodelLoadingOverlay)
-        
     }
     
     private var welcomeView: some View {
@@ -398,7 +407,7 @@ struct ContentView: View {
                                             .fill(welcomeColors[index % welcomeColors.count])
                                     )
                             }
-                            .buttonStyle(.plain) // ✅ Removes extra rectangle
+                            .buttonStyle(.plain)
                             .accessibilityLabel(question)
                         }
                     }
@@ -418,7 +427,7 @@ struct ContentView: View {
                                             .fill(welcomeColors[(index + 3) % welcomeColors.count])
                                     )
                             }
-                            .buttonStyle(.plain) // ✅ Removes extra rectangle
+                            .buttonStyle(.plain)
                             .accessibilityLabel(question)
                         }
                     }
@@ -430,13 +439,14 @@ struct ContentView: View {
         .padding()
     }
 
-    
     private var messagesView: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(Array(vm.messages.enumerated()), id: \.offset) { index, message in
-                        MessageBubble(message: message, colorIndex: index, chatColors: chatColors)
+                        MessageBubble(message: message,
+                                      colorIndex: index,
+                                      chatColors: chatColors)
                             .id(index)
                     }
                 }
@@ -457,7 +467,9 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 Divider()
                 HStack(alignment: .top, spacing: 16) {
-                    TextField("Type a message...", text: $vm.input, axis: .vertical)
+                    TextField("Type a message...",
+                              text: $vm.input,
+                              axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.system(size: 16))
                         .padding(.horizontal, 24)
@@ -502,11 +514,108 @@ struct ContentView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 8)
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(
+            Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+        ) { _ in
             if let start = thinkingStartDate, !vm.isReady {
                 thinkingElapsed = Int(Date().timeIntervalSince(start))
             } else {
                 thinkingElapsed = 0
+            }
+        }
+    }
+    
+    // MARK: - Upload Course View (simplest drop + picker)
+    private var uploadCourseView: some View {
+        GeometryReader { geo in
+            let side = max(
+                220.0,
+                min(min(geo.size.width, geo.size.height) * 0.35, 420.0)
+            )
+            
+            ZStack {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(isDropTargeted ? Color.blue.opacity(0.2) : Color.gray.opacity(0.15))
+                    .frame(width: side, height: side)
+                    .overlay {
+                        VStack(spacing: 10) {
+                            if let name = selectedPDFName {
+                                Text(name)
+                                    .font(.headline)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .padding(.horizontal, 16)
+                            } else {
+                                Image(systemName: "arrow.up.doc")
+                                    .font(.system(size: 48, weight: .regular))
+                                    .foregroundColor(.secondary)
+                                Text("Upload PDF")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        showPDFImporter = true
+                    }
+                    .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
+                        guard let provider = providers.first else { return false }
+
+                        // Ask for a file URL from the drag
+                        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier,
+                                          options: nil) { item, error in
+                            if let error = error {
+                                print("Drop error: \(error.localizedDescription)")
+                                return
+                            }
+
+                            // Finder usually gives us the URL wrapped in Data
+                            if let data = item as? Data,
+                               let url = URL(dataRepresentation: data, relativeTo: nil) {
+
+                                Task { @MainActor in
+                                    // 1) Tell RAG to use this file
+                                    vm.setRAGPDF(url: url)
+                                    // 2) Update the label
+                                    selectedPDFName = url.lastPathComponent
+                                    print("Drop: using file \(url.path)")
+                                }
+
+                            } else if let url = item as? URL {
+                                // Fallback if we ever get a plain URL
+                                Task { @MainActor in
+                                    vm.setRAGPDF(url: url)
+                                    selectedPDFName = url.lastPathComponent
+                                    print("Drop: using file \(url.path)")
+                                }
+                            } else {
+                                print("Drop: unsupported item \(String(describing: item))")
+                            }
+                        }
+
+                        return true
+                    }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding()
+        .navigationTitle("PDF insertion")
+        .fileImporter(isPresented: $showPDFImporter,
+                      allowedContentTypes: [.pdf],
+                      allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    Task { @MainActor in
+                        vm.setRAGPDF(url: url)
+                        selectedPDFName = url.lastPathComponent
+                        print("Picker: using file \(url.path)")
+                    }
+                }
+            case .failure(let error):
+                print("fileImporter error: \(error.localizedDescription)")
             }
         }
     }
@@ -517,8 +626,12 @@ struct ContentView: View {
             List {
                 VStack(alignment: .leading, spacing: 12) {
                     Button(action: {
-                        // 3. Append new session and select it
-                        let newSession = ChatUISession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                        let newSession = ChatUISession(
+                            id: UUID(),
+                            model: selectedModel,
+                            messages: [],
+                            created: Date()
+                        )
                         ChatUISessions.insert(newSession, at: 0)
                         selectedSessionID = newSession.id
                         vm.messages = []
@@ -539,7 +652,6 @@ struct ContentView: View {
                 }
                 .padding([.top, .horizontal])
                 
-                // Show only conversations matching the selected model
                 Section(header: Text("\(historyFilterModel)")) {
                     ForEach(ChatUISessions.filter { $0.model == historyFilterModel }.prefix(5)) { session in
                         VStack(alignment: .leading, spacing: 4) {
@@ -571,24 +683,6 @@ struct ContentView: View {
                         .padding(.vertical, 2)
                     }
                 }
-                /*
-                // 7. Remove older conversations for now
-                Section("Older Conversations") {
-                    ForEach(5..<10, id: \.self) { index in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Conversation \(index + 1)")
-                                .font(.headline)
-                            Text("Python and data analysis...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("\(index - 4) days ago")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-                */
             }
             .navigationTitle("History")
         }
@@ -599,7 +693,6 @@ struct ContentView: View {
     #if os(macOS)
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                // Appearance Section
                 Text("Appearance").font(.title3.bold()).padding(.bottom, 6)
                 HStack {
                     Label("Theme", systemImage: "paintbrush")
@@ -613,7 +706,6 @@ struct ContentView: View {
                 }
                 Divider()
 
-                // Behavior Section
                 Text("Behavior").font(.title3.bold()).padding(.bottom, 6)
                 HStack {
                     Label("Auto-send on Return", systemImage: "return")
@@ -632,7 +724,6 @@ struct ContentView: View {
                 }
                 Divider()
 
-                // Privacy Section
                 Text("Privacy").font(.title3.bold()).padding(.bottom, 6)
                 HStack {
                     Label("Analytics", systemImage: "chart.bar")
@@ -646,7 +737,6 @@ struct ContentView: View {
                 }
                 Divider()
 
-                // About Section
                 Text("About").font(.title3.bold()).padding(.bottom, 6)
                 HStack {
                     Label("Version", systemImage: "info.circle")
@@ -663,14 +753,12 @@ struct ContentView: View {
                 } label: {
                     Label("Open Source Licenses", systemImage: "doc.text")
                 }
-
             }
             .padding(32)
             .frame(maxWidth: 500)
         }
         .navigationTitle("Settings")
     #else
-        // iPad/iOS
         Form {
             Section("Appearance") {
                 HStack {
@@ -737,7 +825,7 @@ struct ContentView: View {
     }
 }
 
-// Message bubble component
+// Message bubble
 struct MessageBubble: View {
     let message: String
     let colorIndex: Int
@@ -760,8 +848,6 @@ struct MessageBubble: View {
         HStack(alignment: .top, spacing: 12) {
             if isUser {
                 Spacer(minLength: 60)
-
-                // User message + icon
                 Text(displayText)
                     .font(.body)
                     .foregroundColor(.white)
@@ -771,8 +857,6 @@ struct MessageBubble: View {
                         RoundedRectangle(cornerRadius: 18)
                             .fill(chatColors[colorIndex % chatColors.count])
                     )
-
-                // Person icon for user
                 Image(systemName: "person.fill")
                     .foregroundColor(.white)
                     .background(
@@ -782,15 +866,15 @@ struct MessageBubble: View {
                     )
                     .frame(width: 36, height: 36)
             } else {
-                // Logo icon for bot
-                Image("Logo") // 🖼️ Your logo image asset name
+                Image("Logo")
                     .resizable()
                     .scaledToFill()
                     .frame(width: 36, height: 36)
                     .clipShape(Circle())
-                    .background(Circle().stroke(Color.gray.opacity(0.3), lineWidth: 1))
-
-                // Bot message
+                    .background(
+                        Circle()
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                    )
                 Text(displayText)
                     .font(.body)
                     .foregroundColor(.primary)
@@ -800,11 +884,9 @@ struct MessageBubble: View {
                         RoundedRectangle(cornerRadius: 18)
                             .fill(Color.gray.opacity(0.2))
                     )
-
                 Spacer(minLength: 60)
             }
         }
-
     }
 }
 

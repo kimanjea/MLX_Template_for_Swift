@@ -14,11 +14,9 @@ import PDFKit
 import NaturalLanguage
 import Hub
 
-
 struct AskResponse: Decodable {
     let answer: String
 }
-
 
 @MainActor
 class ChatViewModel: ObservableObject {
@@ -32,24 +30,40 @@ class ChatViewModel: ObservableObject {
     @Published var modelLoadProgress: Progress? = nil
     @Published var embedModelProgress: Progress? = nil
     @Published var embedderModel: MLXEmbedders.ModelContainer?
-    private var session: ChatSession?
     
+    /// If nil, we fall back to Final_Activity_v1.pdf in the app bundle
+    @Published var currentRAGPDFURL: URL? = nil
+    
+    private var session: ChatSession?
     
     init() {
         Task {
             self.isModelLoading = true
             self.isEmbedModelLoading = true
+            
             let progress = Progress(totalUnitCount: 100)
             let embedProgress = Progress(totalUnitCount: 100)
             self.modelLoadProgress = progress
             self.embedModelProgress = embedProgress
+            
             do {
-                let model = try await loadModel(id: "ShukraJaliya/BLUECOMPUTER.2", progressHandler: { [weak self] prog in
-                    Task { @MainActor in
-                        self?.modelLoadProgress = prog
+                let model = try await loadModel(
+                    id: "ShukraJaliya/BLUECOMPUTER.2",
+                    progressHandler: { [weak self] prog in
+                        Task { @MainActor in
+                            self?.modelLoadProgress = prog
+                        }
                     }
-                })
-                self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters(maxTokens: 600, temperature: 0.3, topP: 0.8))
+                )
+                self.session = ChatSession(
+                    model,
+                    instructions: SYSTEM_PROMPT,
+                    generateParameters: GenerateParameters(
+                        maxTokens: 600,
+                        temperature: 0.3,
+                        topP: 0.8
+                    )
+                )
             } catch {
                 print("Model loading failed: \(error)")
             }
@@ -57,25 +71,28 @@ class ChatViewModel: ObservableObject {
             self.isModelLoading = false
             
             do {
-                let modelContainer = try await MLXEmbedders.loadModelContainer(configuration: ModelConfiguration.minilm_l6,  progressHandler: { [weak self] prog in
-                    Task { @MainActor in
-                        self?.embedModelProgress = prog
+                let modelContainer = try await MLXEmbedders.loadModelContainer(
+                    configuration: ModelConfiguration.minilm_l6,
+                    progressHandler: { [weak self] prog in
+                        Task { @MainActor in
+                            self?.embedModelProgress = prog
+                        }
                     }
-                })
+                )
                 
                 self.embedderModel = modelContainer
-                
             } catch {
-                print("Model loading failed: \(error)")
+                print("Embedding model loading failed: \(error)")
             }
             
             self.isEmbedModelLoading = false
-            
         }
     }
     
     private func classifyTopic(for question: String) -> String? {
-        guard let modelURL = Bundle.main.url(forResource: "TopicClassifier", withExtension: "mlmodelc") else { return nil }
+        guard let modelURL = Bundle.main.url(forResource: "TopicClassifier", withExtension: "mlmodelc") else {
+            return nil
+        }
         do {
             let model = try MLModel(contentsOf: modelURL)
             let input = try MLDictionaryFeatureProvider(dictionary: ["text": question])
@@ -87,10 +104,22 @@ class ChatViewModel: ObservableObject {
         }
     }
     
+    /// Picks the PDF for RAG (uploaded one if set, otherwise Final_Activity_v1.pdf from bundle)
     private func textChunker(for question: String) -> [String] {
-        guard let pdfFile = Bundle.main.url(forResource: "Final_Activity_v1", withExtension: "pdf"),
-              let pdfDocument = PDFDocument(url: pdfFile) else {
-            print("PDF not found")
+        let pdfURL: URL
+        if let customURL = currentRAGPDFURL {
+            pdfURL = customURL
+        } else if let bundledURL = Bundle.main.url(forResource: "Final_Activity_v1", withExtension: "pdf") {
+            pdfURL = bundledURL
+        } else {
+            print("No PDF found for RAG (neither uploaded nor bundled).")
+            return []
+        }
+        
+        print("Using RAG PDF: \(pdfURL.lastPathComponent)")
+        
+        guard let pdfDocument = PDFDocument(url: pdfURL) else {
+            print("Failed to open PDF at \(pdfURL.path)")
             return []
         }
         
@@ -105,7 +134,7 @@ class ChatViewModel: ObservableObject {
             }
         }
         
-        // STEP 2: Split into manageable chunks (like RecursiveCharacterTextSplitter)
+        // STEP 2: Split into manageable chunks
         let chunkSize = 100
         let chunkOverlap = 5
         var chunks: [String] = []
@@ -117,8 +146,11 @@ class ChatViewModel: ObservableObject {
                 let chunk = String(text[start..<end])
                 chunks.append(chunk)
                 
-                // Advance start by chunkSize - chunkOverlap
-                start = text.index(start, offsetBy: chunkSize - chunkOverlap, limitedBy: text.endIndex) ?? text.endIndex
+                start = text.index(
+                    start,
+                    offsetBy: chunkSize - chunkOverlap,
+                    limitedBy: text.endIndex
+                ) ?? text.endIndex
             }
         }
         
@@ -127,7 +159,11 @@ class ChatViewModel: ObservableObject {
     
     func embedChunks(_ chunks: [String]) async throws -> [[Float]] {
         guard let modelContainer = self.embedderModel else {
-            throw NSError(domain: "Embedder", code: -1, userInfo: [NSLocalizedDescriptionKey: "Embedding model not loaded"])
+            throw NSError(
+                domain: "Embedder",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Embedding model not loaded"]
+            )
         }
         
         return await modelContainer.perform { (model: EmbeddingModel, tokenizer, pooling) -> [[Float]] in
@@ -144,16 +180,18 @@ class ChatViewModel: ObservableObject {
             let mask = (padded .!= eosTokenId)
             let tokenTypes = MLXArray.zeros(like: padded)
             let output = pooling(
-                model(padded, positionIds: nil, tokenTypeIds: tokenTypes, attentionMask: mask),
-                normalize: true, applyLayerNorm: true
+                model(padded,
+                      positionIds: nil,
+                      tokenTypeIds: tokenTypes,
+                      attentionMask: mask),
+                normalize: true,
+                applyLayerNorm: true
             )
-            // Print shape for debugging
-            print(output.shape)
-            // Try to cast to [[Float]]
+            print("Embedding output shape: \(output.shape)")
+            
             if let embeddings = output.asArray(Float.self) as? [[Float]] {
                 return embeddings
             } else {
-                // Fallback: manually reshape
                 let flat: [Float] = output.asArray(Float.self)
                 let embeddingSize = flat.count / chunks.count
                 return (0..<chunks.count).map { i in
@@ -169,32 +207,26 @@ class ChatViewModel: ObservableObject {
         chunkEmbeddings: [[Float]],
         topK: Int = 1
     ) async throws -> [String] {
-        // Get the embedding for the question string.
         let questionEmbeddingArrs = try await embedChunks([question])
         guard let qEmb = questionEmbeddingArrs.first else { return [] }
         
-        // Compute dot-product similarity to each chunk embedding.
         let similarities: [Float] = chunkEmbeddings.map { chunkEmb in
             dotProduct(qEmb, chunkEmb)
         }
         
-        // Get indices of top-k values (descending)
         let topKIdx = similarities
             .enumerated()
             .sorted(by: { $0.element > $1.element })
             .prefix(topK)
             .map { $0.offset }
         
-        // Return the corresponding chunk texts.
         return topKIdx.map { chunks[$0] }
     }
     
-    /// Computes the dot product between two float arrays.
     private func dotProduct(_ a: [Float], _ b: [Float]) -> Float {
         guard a.count == b.count else { return 0 }
         return zip(a, b).map(*).reduce(0, +)
     }
-    
     
     let SYSTEM_PROMPT = """
        You are an expert who only teaches data activism and Python programming to K–12 students. 
@@ -205,8 +237,13 @@ class ChatViewModel: ObservableObject {
            If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
        """
     
+    /// Minimal helper: just remember which file to use for RAG
+    func setRAGPDF(url: URL) {
+        currentRAGPDFURL = url
+        print("RAG PDF set to: \(url.path)")
+    }
+    
     func send() {
-        
         guard let session = self.session, !self.input.isEmpty else { return }
         let question = self.input
         self.messages.append("You: \(question)")
@@ -216,32 +253,33 @@ class ChatViewModel: ObservableObject {
         Task { @MainActor in
             let start = Date()
             do {
-                
                 if let topic = classifyTopic(for: question) {
                     print("Predicted topic: \(topic)")
                     
                     if topic == "1" {
                         let chunks = textChunker(for: question)
                         let chunkEmbeddings = try await embedChunks(chunks)
-                        var topChunks = try await retrieveContext(
+                        let topChunks = try await retrieveContext(
                             question: question,
                             chunks: chunks,
                             chunkEmbeddings: chunkEmbeddings,
-                            topK: 1 
+                            topK: 1
                         )
                         
                         self.finalContext = topChunks.first ?? ""
+                        
+                        if !self.finalContext.isEmpty {
+                            print("Selected RAG chunk for question:\n\(question)\n---\n\(self.finalContext)\n---")
+                        } else {
+                            print("No RAG chunk selected for question: \(question)")
+                        }
                         
                         prompt = """
                                  <|im_start|>system \(SYSTEM_PROMPT). If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>
                                  <|im_start|>user \(question)
                                  <|im_start|>assistant 
                                  """
-                        
-
                     } else {
-
-                        
                         self.finalContext = ""
                         
                         prompt = """
@@ -249,22 +287,20 @@ class ChatViewModel: ObservableObject {
                                  <|im_start|>user \(question)<|im_end|>
                                  <|im_start|>assistant
                                  """
-                     }
+                    }
                 }
-
                 
                 let userPrompt = prompt
-                
                 let reply = try await session.respond(to: userPrompt)
                 let elapsed = Date().timeIntervalSince(start)
-                self.messages.append("(\(String(format: "%.2f", elapsed))s): \(reply)")
+                let elapsedString = String(format: "%.2f", elapsed)
+                self.messages.append("(\(elapsedString)s): \(reply)")
             } catch {
                 let elapsed = Date().timeIntervalSince(start)
-                self.messages.append("Error (\(String(format: "%.2f", elapsed))s): \(error.localizedDescription)")
+                let elapsedString = String(format: "%.2f", elapsed)
+                self.messages.append("Error (\(elapsedString)s): \(error.localizedDescription)")
             }
             self.isReady = true
-            
         }
     }
-    
 }
