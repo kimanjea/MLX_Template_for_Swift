@@ -64,3 +64,5 @@ fastlane/test_output
 /MLX_Researcher_Swift_Final/MLX_Researcher_Swift_Final/data_activism_classifier
 /MLX_Researcher_Swift_Final/MLX_Researcher_Swift_Final/data_activism_classifier
 MLX_Researcher_Swift_Final/MLX_Researcher_Swift_Final/mistral_prompt.safetensors
+MLX_Researcher_Swift_Final/.DS_Store
+/MLX_Researcher_Swift_Final
