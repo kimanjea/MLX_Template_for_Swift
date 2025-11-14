@@ -15,6 +15,11 @@ import NaturalLanguage
 import Hub
 import NaturalLanguage
 
+struct ConversationExample: Codable {
+    let system: String
+    let user: String
+    let assistant: String
+}
 
 struct AskResponse: Decodable {
     let answer: String
@@ -282,7 +287,6 @@ class ChatViewModel: ObservableObject {
                     } else {
                         
                         self.finalContext = ""
-                        
                         prompt = """
                                  <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
                                  <|im_start|>user \(question)<|im_end|>
@@ -308,4 +312,67 @@ class ChatViewModel: ObservableObject {
         }
     }
     
+    // Added method with requested changes:
+    func extractPDFToJsonLines(from url: URL) async {
+        do {
+            guard let document = PDFDocument(url: url) else {
+                print("Failed to load PDF")
+                return
+            }
+            var allText = ""
+            for pageIndex in 0..<document.pageCount {
+                if let page = document.page(at: pageIndex),
+                   let pageText = page.string {
+                    allText += pageText + "\n"
+                }
+            }
+            
+            // Use NLTokenizer to split allText by sentences
+            let tokenizer = NLTokenizer(unit: .sentence)
+            tokenizer.string = allText
+            var lines: [String] = []
+            tokenizer.enumerateTokens(in: allText.startIndex..<allText.endIndex) { range, _ in
+                let sentence = allText[range].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !sentence.isEmpty {
+                    lines.append(sentence)
+                }
+                return true
+            }
+            
+            // Example system prompt as JSON, using the encoder for consistent format
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = []
+            let examplePrompt = ConversationExample(
+                system: "You are an expert who explains concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject.",
+                user: "USER INPUT HERE",
+                assistant: "ASSISTANT RESPONSE HERE"
+            )
+            let systemPrompt: String = String(data: try! encoder.encode(examplePrompt), encoding: .utf8)! // guaranteed to succeed
+            
+            let examples = lines.map { ConversationExample(system: systemPrompt, user: "USER INPUT HERE", assistant: $0) }
+            
+            let splitIndex = Int(Double(examples.count) * 0.8)
+            let trainingExamples = examples[0..<splitIndex]
+            let validExamples = examples[splitIndex...]
+            
+            let documentsDirs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+            guard let documentsDir = documentsDirs.first else {
+                print("Failed to access Documents directory")
+                return
+            }
+            let trainingURL = documentsDir.appendingPathComponent("training.jsonl")
+            let validURL = documentsDir.appendingPathComponent("valid.jsonl")
+            
+            let trainingContent = trainingExamples.map { String(data: try! encoder.encode($0), encoding: .utf8)! }.joined(separator: "\n")
+            let validContent = validExamples.map { String(data: try! encoder.encode($0), encoding: .utf8)! }.joined(separator: "\n")
+            
+            try trainingContent.write(to: trainingURL, atomically: true, encoding: .utf8)
+            try validContent.write(to: validURL, atomically: true, encoding: .utf8)
+            
+            print("Training and validation files written to Documents directory in conversational prompt format.")
+        } catch {
+            print("Error extracting PDF to conversational prompt format: \(error)")
+        }
+    }
 }
+
