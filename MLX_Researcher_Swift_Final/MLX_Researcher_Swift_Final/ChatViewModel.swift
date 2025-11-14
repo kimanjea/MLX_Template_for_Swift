@@ -14,6 +14,7 @@ import PDFKit
 import NaturalLanguage
 import Hub
 import NaturalLanguage
+import NaturalLanguage
 
 struct ConversationExample: Codable {
     let system: String
@@ -292,7 +293,6 @@ class ChatViewModel: ObservableObject {
                                  <|im_start|>user \(question)<|im_end|>
                                  <|im_start|>assistant
                                  """
-                        
                     }
                 }
                 
@@ -312,7 +312,55 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    // Added method with requested changes:
+
+    /// Extracts the most common nouns/proper nouns from given texts using NLTagger
+    private func extractKeywords(from texts: [String], maxKeywords: Int = 20) -> [String] {
+        var frequency: [String: Int] = [:]
+        for text in texts {
+            let tagger = NLTagger(tagSchemes: [.lexicalClass])
+            tagger.string = text
+            tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .lexicalClass) { tag, range in
+                if let tag = tag, tag == .noun {
+                    let word = String(text[range]).lowercased()
+                    if word.count > 2 { // filter out very short words
+                        frequency[word, default: 0] += 1
+                    }
+                }
+                return true
+            }
+        }
+        // Sort by frequency and take top N
+        return frequency.sorted { $0.value > $1.value }.prefix(maxKeywords).map { $0.key }
+    }
+    
+    /// Finds the user question with the highest semantic similarity to the assistant response.
+    private func semanticMatch(userQuestions: [String], assistantResponse: String) async throws -> String? {
+        let embeddings = try await embedChunks(userQuestions + [assistantResponse])
+        let userEmbeddings = embeddings.dropLast()
+        let responseEmbedding = embeddings.last!
+        let similarities = userEmbeddings.map { dotProduct($0, responseEmbedding) }
+        if let maxIndex = similarities.enumerated().max(by: { $0.element < $1.element })?.offset {
+            return userQuestions[maxIndex]
+        }
+        return nil
+    }
+    
+    /// Cascading heuristic+semantic matching for user-assistant pairing
+    func matchUserQuestionsToAssistantResponses(userQuestions: [String], assistantResponses: [String]) async throws -> [(user: String, assistant: String)] {
+        var usedQuestions = Set<String>()
+        var results: [(user: String, assistant: String)] = []
+        for response in assistantResponses {
+            if let match = try await semanticMatch(userQuestions: userQuestions.filter { !usedQuestions.contains($0) }, assistantResponse: response) {
+                if !usedQuestions.contains(match) {
+                    results.append((user: match, assistant: response))
+                    usedQuestions.insert(match)
+                }
+            }
+        }
+        return results
+    }
+    
+    // Updated method with requested changes:
     func extractPDFToJsonLines(from url: URL) async {
         do {
             guard let document = PDFDocument(url: url) else {
@@ -339,27 +387,43 @@ class ChatViewModel: ObservableObject {
                 return true
             }
             
-            // Example system prompt as JSON, using the encoder for consistent format
             let encoder = JSONEncoder()
             encoder.outputFormatting = []
+            
+            // Convert the system prompt to JSON string for inserting into ConversationExample.system
             let examplePrompt = ConversationExample(
                 system: "You are an expert who explains concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject.",
                 user: "USER INPUT HERE",
                 assistant: "ASSISTANT RESPONSE HERE"
             )
-            let systemPrompt: String = String(data: try! encoder.encode(examplePrompt), encoding: .utf8)! // guaranteed to succeed
-            
-            let examples = lines.map { ConversationExample(system: systemPrompt, user: "USER INPUT HERE", assistant: $0) }
-            
-            let splitIndex = Int(Double(examples.count) * 0.8)
-            let trainingExamples = examples[0..<splitIndex]
-            let validExamples = examples[splitIndex...]
+            let systemPrompt: String = String(data: try encoder.encode(examplePrompt), encoding: .utf8)! // guaranteed to succeed
             
             let documentsDirs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
             guard let documentsDir = documentsDirs.first else {
                 print("Failed to access Documents directory")
                 return
             }
+            
+            // Load user questions from user_questions.txt in Documents directory
+            let userQuestionsURL = documentsDir.appendingPathComponent("user_questions.txt")
+            let userQuestions: [String]
+            if let questionsData = try? Data(contentsOf: userQuestionsURL), let questionsString = String(data: questionsData, encoding: .utf8) {
+                userQuestions = questionsString.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            } else {
+                print("Warning: user_questions.txt not found or empty. Using placeholder questions.")
+                userQuestions = ["USER INPUT HERE"]
+            }
+            
+            // Use cascading match to pair user questions and assistant responses
+            let pairs = try await matchUserQuestionsToAssistantResponses(userQuestions: userQuestions, assistantResponses: lines)
+            
+            // Convert pairs to ConversationExample objects
+            let examples = pairs.map { ConversationExample(system: systemPrompt, user: $0.user, assistant: $0.assistant) }
+            
+            let splitIndex = Int(Double(examples.count) * 0.8)
+            let trainingExamples = examples[0..<splitIndex]
+            let validExamples = examples[splitIndex...]
+            
             let trainingURL = documentsDir.appendingPathComponent("training.jsonl")
             let validURL = documentsDir.appendingPathComponent("valid.jsonl")
             
@@ -374,5 +438,64 @@ class ChatViewModel: ObservableObject {
             print("Error extracting PDF to conversational prompt format: \(error)")
         }
     }
-}
 
+
+    /// Extracts likely user questions (sentences ending with '?') from a PDF file.
+    func extractQuestionsFromPDF(url: URL) -> [String] {
+        guard let document = PDFDocument(url: url) else {
+            print("Failed to load PDF")
+            return []
+        }
+        var allText = ""
+        for pageIndex in 0..<document.pageCount {
+            if let page = document.page(at: pageIndex),
+               let pageText = page.string {
+                allText += pageText + "\n"
+            }
+        }
+        let tokenizer = NLTokenizer(unit: .sentence)
+        tokenizer.string = allText
+        var questions: [String] = []
+        tokenizer.enumerateTokens(in: allText.startIndex..<allText.endIndex) { range, _ in
+            let sentence = allText[range].trimmingCharacters(in: .whitespacesAndNewlines)
+            if sentence.hasSuffix("?") {
+                questions.append(sentence)
+            }
+            return true
+        }
+        return questions
+    }
+    
+    /// Gathers user questions from PDF, optional user_questions.txt, plus fallback examples.
+    func gatherUserQuestions(fromPDF url: URL) -> [String] {
+        var questions = Set<String>()
+        // 1. Extract from PDF
+        let pdfQuestions = extractQuestionsFromPDF(url: url)
+        questions.formUnion(pdfQuestions)
+        // 2. Try to load from user_questions.txt
+        let documentsDirs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        if let documentsDir = documentsDirs.first {
+            let userQuestionsURL = documentsDir.appendingPathComponent("user_questions.txt")
+            if let questionsData = try? Data(contentsOf: userQuestionsURL),
+               let questionsString = String(data: questionsData, encoding: .utf8) {
+                let txtQuestions = questionsString.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                questions.formUnion(txtQuestions.filter { !$0.isEmpty })
+            }
+        }
+        // 3. Filter out very short items
+        let filtered = questions.filter { $0.count > 8 }
+        var result = Array(filtered)
+        // 4. Fallback/generic examples if list is too small
+        if result.count < 5 {
+            result.append(contentsOf: [
+                "What does a variable do in Python?",
+                "How can I use a for loop?",
+                "What is data activism?",
+                "How do I read a CSV file?",
+                "What does it mean to analyze data?"
+            ])
+        }
+        return Array(Set(result))
+    }
+
+}
