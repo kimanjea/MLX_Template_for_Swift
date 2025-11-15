@@ -560,43 +560,54 @@ struct ContentView: View {
                     .onTapGesture {
                         showPDFImporter = true
                     }
-                    .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
-                        guard let provider = providers.first else { return false }
-
-                        // Ask for a file URL from the drag
-                        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier,
-                                          options: nil) { item, error in
-                            if let error = error {
-                                print("Drop error: \(error.localizedDescription)")
-                                return
-                            }
-
-                            // Finder usually gives us the URL wrapped in Data
-                            if let data = item as? Data,
-                               let url = URL(dataRepresentation: data, relativeTo: nil) {
-
-                                Task { @MainActor in
-                                    // 1) Tell RAG to use this file
-                                    vm.setRAGPDF(url: url)
-                                    // 2) Update the label
-                                    selectedPDFName = url.lastPathComponent
-                                    print("Drop: using file \(url.path)")
-                                }
-
-                            } else if let url = item as? URL {
-                                // Fallback if we ever get a plain URL
-                                Task { @MainActor in
-                                    vm.setRAGPDF(url: url)
-                                    selectedPDFName = url.lastPathComponent
-                                    print("Drop: using file \(url.path)")
-                                }
-                            } else {
-                                print("Drop: unsupported item \(String(describing: item))")
-                            }
-                        }
-
-                        return true
-                    }
+                    .onDrop(of: [.pdf], isTargeted: $isDropTargeted) { providers in
+                                        guard let provider = providers.first else { return false }
+                                        
+                                        // Ask the provider for a temporary PDF file we can copy
+                                        provider.loadFileRepresentation(forTypeIdentifier: UTType.pdf.identifier) { tempURL, error in
+                                            if let error = error {
+                                                print("Drop error: \(error.localizedDescription)")
+                                                return
+                                            }
+                                            guard let tempURL = tempURL else {
+                                                print("Drop: no URL returned")
+                                                return
+                                            }
+                                            
+                                            // Copy into Documents/RAGPDFs so we own the file path
+                                            let fm = FileManager.default
+                                            do {
+                                                let docs = try fm.url(
+                                                    for: .documentDirectory,
+                                                    in: .userDomainMask,
+                                                    appropriateFor: nil,
+                                                    create: true
+                                                )
+                                                let ragFolder = docs.appendingPathComponent("RAGPDFs")
+                                                
+                                                // Fresh folder each time
+                                                try? fm.removeItem(at: ragFolder)
+                                                try fm.createDirectory(at: ragFolder, withIntermediateDirectories: true)
+                                                
+                                                let dest = ragFolder.appendingPathComponent(tempURL.lastPathComponent)
+                                                if fm.fileExists(atPath: dest.path) {
+                                                    try fm.removeItem(at: dest)
+                                                }
+                                                try fm.copyItem(at: tempURL, to: dest)
+                                                
+                                                DispatchQueue.main.async {
+                                                    // Tell the ViewModel which PDF to use for RAG
+                                                    vm.setRAGPDF(url: dest)
+                                                    selectedPDFName = dest.lastPathComponent
+                                                    print("Drop: using file \(dest.path)")
+                                                }
+                                            } catch {
+                                                print("Drop copy error: \(error.localizedDescription)")
+                                            }
+                                        }
+                                        
+                                        return true
+                                    }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
