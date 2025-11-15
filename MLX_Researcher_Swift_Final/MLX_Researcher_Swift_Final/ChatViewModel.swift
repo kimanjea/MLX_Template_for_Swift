@@ -14,7 +14,6 @@ import PDFKit
 import NaturalLanguage
 import Hub
 import NaturalLanguage
-import NaturalLanguage
 
 struct ConversationExample: Codable {
     let system: String
@@ -39,6 +38,7 @@ class ChatViewModel: ObservableObject {
     @Published var modelLoadProgress: Progress? = nil
     @Published var embedModelProgress: Progress? = nil
     @Published var embedderModel: MLXEmbedders.ModelContainer?
+    @Published var MinEmbedderModel: MLXEmbedders.ModelContainer?
     private var session: ChatSession?
     
     
@@ -312,30 +312,57 @@ class ChatViewModel: ObservableObject {
         }
     }
     
+    
+    
+    
+    
 
-    /// Extracts the most common nouns/proper nouns from given texts using NLTagger
-    private func extractKeywords(from texts: [String], maxKeywords: Int = 20) -> [String] {
-        var frequency: [String: Int] = [:]
-        for text in texts {
-            let tagger = NLTagger(tagSchemes: [.lexicalClass])
-            tagger.string = text
-            tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .lexicalClass) { tag, range in
-                if let tag = tag, tag == .noun {
-                    let word = String(text[range]).lowercased()
-                    if word.count > 2 { // filter out very short words
-                        frequency[word, default: 0] += 1
-                    }
-                }
-                return true
+    func embedChunksWithQwen(_ chunks: [String]) async throws -> [[Float]] {
+        if MinEmbedderModel == nil {
+            do {
+                // Load the Qwen 1.5B embedding model container from minilm_l6 configuration
+                MinEmbedderModel = try await MLXEmbedders.loadModelContainer(configuration: ModelConfiguration.minilm_l6)
+            } catch {
+                throw NSError(domain: "Embedder", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to load Mini embedding model: \(error.localizedDescription)"])
             }
         }
-        // Sort by frequency and take top N
-        return frequency.sorted { $0.value > $1.value }.prefix(maxKeywords).map { $0.key }
+        guard let modelContainer = MinEmbedderModel else {
+            throw NSError(domain: "Embedder", code: -1, userInfo: [NSLocalizedDescriptionKey: "Mini embedding model not loaded"])
+        }
+        
+        return await modelContainer.perform { (model: EmbeddingModel, tokenizer, pooling) -> [[Float]] in
+            let encodedInputs = chunks.map { text in
+                tokenizer.encode(text: text, addSpecialTokens: true)
+            }
+            let maxLength = encodedInputs.map(\.count).max() ?? 0
+            let eosTokenId = tokenizer.eosTokenId ?? 0
+            let padded = stacked(
+                encodedInputs.map { tokens in
+                    MLXArray(tokens + Array(repeating: eosTokenId, count: maxLength - tokens.count))
+                }
+            )
+            let mask = (padded .!= eosTokenId)
+            let tokenTypes = MLXArray.zeros(like: padded)
+            let output = pooling(
+                model(padded, positionIds: nil, tokenTypeIds: tokenTypes, attentionMask: mask),
+                normalize: true, applyLayerNorm: true
+            )
+            if let embeddings = output.asArray(Float.self) as? [[Float]] {
+                return embeddings
+            } else {
+                // Fallback: manually reshape
+                let flat: [Float] = output.asArray(Float.self)
+                let embeddingSize = flat.count / chunks.count
+                return (0..<chunks.count).map { i in
+                    Array(flat[i*embeddingSize..<(i+1)*embeddingSize])
+                }
+            }
+        }
     }
     
     /// Finds the user question with the highest semantic similarity to the assistant response.
     private func semanticMatch(userQuestions: [String], assistantResponse: String) async throws -> String? {
-        let embeddings = try await embedChunks(userQuestions + [assistantResponse])
+        let embeddings = try await embedChunksWithQwen(userQuestions + [assistantResponse])
         let userEmbeddings = embeddings.dropLast()
         let responseEmbedding = embeddings.last!
         let similarities = userEmbeddings.map { dotProduct($0, responseEmbedding) }
@@ -345,7 +372,7 @@ class ChatViewModel: ObservableObject {
         return nil
     }
     
-    /// Cascading heuristic+semantic matching for user-assistant pairing
+    /// semantic matching for user-assistant pairing
     func matchUserQuestionsToAssistantResponses(userQuestions: [String], assistantResponses: [String]) async throws -> [(user: String, assistant: String)] {
         var usedQuestions = Set<String>()
         var results: [(user: String, assistant: String)] = []
@@ -363,10 +390,12 @@ class ChatViewModel: ObservableObject {
     // Updated method with requested changes:
     func extractPDFToJsonLines(from url: URL) async {
         do {
+            // 1. Load PDF and extract all text
             guard let document = PDFDocument(url: url) else {
                 print("Failed to load PDF")
                 return
             }
+            
             var allText = ""
             for pageIndex in 0..<document.pageCount {
                 if let page = document.page(at: pageIndex),
@@ -375,7 +404,7 @@ class ChatViewModel: ObservableObject {
                 }
             }
             
-            // Use NLTokenizer to split allText by sentences
+            // 2. Split into sentences using NLTokenizer
             let tokenizer = NLTokenizer(unit: .sentence)
             tokenizer.string = allText
             var lines: [String] = []
@@ -390,54 +419,93 @@ class ChatViewModel: ObservableObject {
             let encoder = JSONEncoder()
             encoder.outputFormatting = []
             
-            // Convert the system prompt to JSON string for inserting into ConversationExample.system
-            let examplePrompt = ConversationExample(
-                system: "You are an expert who explains concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject.",
-                user: "USER INPUT HERE",
-                assistant: "ASSISTANT RESPONSE HERE"
-            )
-            let systemPrompt: String = String(data: try encoder.encode(examplePrompt), encoding: .utf8)! // guaranteed to succeed
+            // 3. Plain system prompt string (no double-encoding)
+            let systemPrompt = """
+            You are an expert who explains concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject.
+            """
             
-            let documentsDirs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
-            guard let documentsDir = documentsDirs.first else {
-                print("Failed to access Documents directory")
-                return
-            }
+            // 4. Use your repo directory, not sandbox
+            let documentsDir = URL(fileURLWithPath: "/Users/AVLA Student/Documents/GitHub/MLX_Template_for_Swift/MLX_Researcher_Swift_Final/MLX_Researcher_Swift_Final")
+            print("Using directory:", documentsDir.path)
             
-            // Load user questions from user_questions.txt in Documents directory
+            // 5. Load user questions from user_questions.txt in that folder
             let userQuestionsURL = documentsDir.appendingPathComponent("user_questions.txt")
             let userQuestions: [String]
-            if let questionsData = try? Data(contentsOf: userQuestionsURL), let questionsString = String(data: questionsData, encoding: .utf8) {
-                userQuestions = questionsString.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            if let questionsData = try? Data(contentsOf: userQuestionsURL),
+               let questionsString = String(data: questionsData, encoding: .utf8) {
+                userQuestions = questionsString
+                    .components(separatedBy: .newlines)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
             } else {
                 print("Warning: user_questions.txt not found or empty. Using placeholder questions.")
                 userQuestions = ["USER INPUT HERE"]
             }
             
-            // Use cascading match to pair user questions and assistant responses
-            let pairs = try await matchUserQuestionsToAssistantResponses(userQuestions: userQuestions, assistantResponses: lines)
+            // 6. Pair user questions with assistant responses (sentences from PDF)
+            let pairs = try await matchUserQuestionsToAssistantResponses(
+                userQuestions: userQuestions,
+                assistantResponses: lines
+            )
             
-            // Convert pairs to ConversationExample objects
-            let examples = pairs.map { ConversationExample(system: systemPrompt, user: $0.user, assistant: $0.assistant) }
+            // 7. Build ConversationExample objects
+            let examples = pairs.map {
+                ConversationExample(
+                    system: systemPrompt,
+                    user: $0.user,
+                    assistant: $0.assistant
+                )
+            }
             
+            guard !examples.isEmpty else {
+                print("No examples generated; nothing to write.")
+                return
+            }
+            
+            // 8. Split into train / valid (80 / 20)
             let splitIndex = Int(Double(examples.count) * 0.8)
-            let trainingExamples = examples[0..<splitIndex]
+            let trainingExamples = examples[..<splitIndex]
             let validExamples = examples[splitIndex...]
             
-            let trainingURL = documentsDir.appendingPathComponent("training.jsonl")
-            let validURL = documentsDir.appendingPathComponent("valid.jsonl")
+            let trainingURL = documentsDir.appendingPathComponent("train.jsonl")
+            let validURL    = documentsDir.appendingPathComponent("valid.jsonl")
             
-            let trainingContent = trainingExamples.map { String(data: try! encoder.encode($0), encoding: .utf8)! }.joined(separator: "\n")
-            let validContent = validExamples.map { String(data: try! encoder.encode($0), encoding: .utf8)! }.joined(separator: "\n")
+            let trainingContent = trainingExamples
+                .map { String(data: try! encoder.encode($0), encoding: .utf8)! }
+                .joined(separator: "\n")
             
-            try trainingContent.write(to: trainingURL, atomically: true, encoding: .utf8)
-            try validContent.write(to: validURL, atomically: true, encoding: .utf8)
+            let validContent = validExamples
+                .map { String(data: try! encoder.encode($0), encoding: .utf8)! }
+                .joined(separator: "\n")
             
-            print("Training and validation files written to Documents directory in conversational prompt format.")
+            // 9. Append to train.jsonl
+            if let handle = try? FileHandle(forWritingTo: trainingURL) {
+                handle.seekToEndOfFile()
+                if let data = ("\n" + trainingContent).data(using: .utf8) {
+                    handle.write(data)
+                }
+                handle.closeFile()
+            } else {
+                try trainingContent.write(to: trainingURL, atomically: true, encoding: .utf8)
+            }
+            
+            // 10. Append to valid.jsonl
+            if let handle = try? FileHandle(forWritingTo: validURL) {
+                handle.seekToEndOfFile()
+                if let data = ("\n" + validContent).data(using: .utf8) {
+                    handle.write(data)
+                }
+                handle.closeFile()
+            } else {
+                try validContent.write(to: validURL, atomically: true, encoding: .utf8)
+            }
+            
+            print("Training and validation files written to \(documentsDir.path) in conversational prompt format.")
         } catch {
             print("Error extracting PDF to conversational prompt format: \(error)")
         }
     }
+
 
 
     /// Extracts likely user questions (sentences ending with '?') from a PDF file.
@@ -499,3 +567,25 @@ class ChatViewModel: ObservableObject {
     }
 
 }
+
+#if DEBUG
+import SwiftUI
+
+#Preview("PDF Extraction Test") {
+    let vm = ChatViewModel()
+    return VStack(spacing: 16) {
+        if let pdfURL = Bundle.main.url(forResource: "Final_Activity_v1", withExtension: "pdf") {
+            Text("PDF found: \(pdfURL.lastPathComponent)")
+                .onAppear {
+                    Task {
+                        await vm.extractPDFToJsonLines(from: pdfURL)
+                    }
+                }
+        } else {
+            Text("Final_Activity_v1.pdf not found in bundle!")
+        }
+    }
+    .padding()
+}
+#endif
+
