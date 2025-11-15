@@ -14,10 +14,14 @@ import PDFKit
 import NaturalLanguage
 import Hub
 
-struct ConversationExample: Codable {
-    let system: String
-    let user: String
-    let assistant: String
+// Struct for storing per-"model" configuration
+struct CourseModelConfig: Identifiable, Hashable {
+    let id: UUID
+    var displayName: String          // What shows in the dropdown, e.g. "BLUECOMPUTER"
+    var classifierName: String       // e.g. "TopicClassifier"
+    var llmID: String                // e.g. "ShukraJaliya/BLUECOMPUTER.2"
+    var ragPDFURL: URL?              // User-uploaded PDF (if any)
+    var bundledRAGResourceName: String? // Default bundled PDF name, e.g. "Final_Activity_v1"
 }
 
 struct AskResponse: Decodable {
@@ -26,26 +30,43 @@ struct AskResponse: Decodable {
 
 @MainActor
 class ChatViewModel: ObservableObject {
-    // UI-facing state
     @Published var input = ""
     @Published var finalContext = ""
     @Published var prompt = ""
     @Published var messages: [String] = []
     @Published private(set) var isReady = true
 
-    // Model loading
     @Published var isModelLoading: Bool = true
     @Published var isEmbedModelLoading: Bool = true
     @Published var modelLoadProgress: Progress? = nil
     @Published var embedModelProgress: Progress? = nil
     @Published var embedderModel: MLXEmbedders.ModelContainer?
 
-    // RAG PDF selection: if nil, fall back to bundled Final_Activity_v1.pdf
-    @Published var currentRAGPDFURL: URL? = nil
+    // New: list of models + which one is selected
+    @Published var models: [CourseModelConfig]
+    @Published var selectedModelID: UUID
 
     private var session: ChatSession?
 
+    // Convenience: current config
+    private var currentConfig: CourseModelConfig? {
+        models.first(where: { $0.id == selectedModelID })
+    }
+
     init() {
+        // Default "BLUECOMPUTER" config
+        let defaultModel = CourseModelConfig(
+            id: UUID(),
+            displayName: "BLUECOMPUTER",
+            classifierName: "TopicClassifier",
+            llmID: "ShukraJaliya/BLUECOMPUTER.2",
+            ragPDFURL: nil,
+            bundledRAGResourceName: "Final_Activity_v1"
+        )
+
+        self.models = [defaultModel]
+        self.selectedModelID = defaultModel.id
+
         Task {
             self.isModelLoading = true
             self.isEmbedModelLoading = true
@@ -55,23 +76,28 @@ class ChatViewModel: ObservableObject {
             self.modelLoadProgress = progress
             self.embedModelProgress = embedProgress
 
-            // Load main LLM
+            // Load LLM using current config
             do {
+                guard let cfg = self.currentConfig else {
+                    print("No current model config available for LLM load.")
+                    self.isModelLoading = false
+                    return
+                }
+
                 let model = try await loadModel(
-                    id: "ShukraJaliya/BLUECOMPUTER.2",
+                    id: cfg.llmID,
                     progressHandler: { [weak self] prog in
                         Task { @MainActor in
                             self?.modelLoadProgress = prog
                         }
                     }
                 )
-
                 self.session = ChatSession(
                     model,
                     instructions: SYSTEM_PROMPT,
                     generateParameters: GenerateParameters(
                         maxTokens: 600,
-                        temperature: 0.4,
+                        temperature: 0.3,
                         topP: 0.8
                     )
                 )
@@ -81,7 +107,7 @@ class ChatViewModel: ObservableObject {
 
             self.isModelLoading = false
 
-            // Load embedder model (for RAG + semantic helpers)
+            // Load embedder
             do {
                 let modelContainer = try await MLXEmbedders.loadModelContainer(
                     configuration: ModelConfiguration.minilm_l6,
@@ -101,10 +127,50 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Topic Classification
+    // MARK: - Model management
+
+    /// Called when user picks a different model from the dropdown (by name).
+    func setModelByName(_ name: String) {
+        guard let cfg = models.first(where: { $0.displayName == name }) else {
+            print("setModelByName: no model named \(name)")
+            return
+        }
+        selectedModelID = cfg.id
+
+        // For now, all models share the same LLM + classifier,
+        // so we don't reload anything here.
+        // In the future, you could check cfg.llmID and reload if different.
+        print("Switched to model: \(cfg.displayName)")
+    }
+
+    /// Called when user clicks "Save Model" after providing a name + PDF.
+    func createModel(displayName: String, ragPDFURL: URL) {
+        // For now, reuse same classifier + LLM as default.
+        let base = currentConfig
+
+        let newModel = CourseModelConfig(
+            id: UUID(),
+            displayName: displayName,
+            classifierName: base?.classifierName ?? "TopicClassifier",
+            llmID: base?.llmID ?? "ShukraJaliya/BLUECOMPUTER.2",
+            ragPDFURL: ragPDFURL,
+            bundledRAGResourceName: nil   // user models don't use bundled PDF
+        )
+
+        models.append(newModel)
+        selectedModelID = newModel.id
+
+        print("Created new model '\(displayName)' with RAG PDF = \(ragPDFURL.lastPathComponent)")
+    }
+
+    // MARK: - Classifier, RAG, embeddings
 
     private func classifyTopic(for question: String) -> String? {
-        guard let modelURL = Bundle.main.url(forResource: "TopicClassifier", withExtension: "mlmodelc") else {
+        guard
+            let cfg = currentConfig,
+            let modelURL = Bundle.main.url(forResource: cfg.classifierName, withExtension: "mlmodelc")
+        else {
+            print("Classifier model not found for current config.")
             return nil
         }
         do {
@@ -118,23 +184,27 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    // MARK: - PDF Chunking (RAG) with configurable PDF
-
-    /// Uses either the currently selected RAG PDF or the bundled Final_Activity_v1.pdf,
-    /// then performs semantic sentence-based chunking.
+    /// Picks the PDF for RAG based on current model config.
     private func textChunker(for question: String) -> [String] {
-        let pdfURL: URL
-
-        if let customURL = currentRAGPDFURL {
-            pdfURL = customURL
-        } else if let bundledURL = Bundle.main.url(forResource: "Final_Activity_v1", withExtension: "pdf") {
-            pdfURL = bundledURL
-        } else {
-            print("PDF not found for RAG (neither uploaded nor bundled).")
+        guard let cfg = currentConfig else {
+            print("textChunker: no current model config.")
             return []
         }
 
-        print("Using RAG PDF: \(pdfURL.lastPathComponent)")
+        let pdfURL: URL
+        if let customURL = cfg.ragPDFURL {
+            pdfURL = customURL
+        } else if
+            let bundledName = cfg.bundledRAGResourceName,
+            let bundledURL = Bundle.main.url(forResource: bundledName, withExtension: "pdf")
+        {
+            pdfURL = bundledURL
+        } else {
+            print("No PDF found for RAG (neither uploaded nor bundled).")
+            return []
+        }
+
+        print("Using RAG PDF: \(pdfURL.lastPathComponent) for model \(cfg.displayName)")
 
         guard let pdfDocument = PDFDocument(url: pdfURL) else {
             print("Failed to open PDF at \(pdfURL.path)")
@@ -152,7 +222,7 @@ class ChatViewModel: ObservableObject {
             }
         }
 
-        // STEP 2: Use semanticChunker to split into meaningful chunks
+        // STEP 2: Semantic chunking using NLTokenizer
         var chunks: [String] = []
 
         for text in allText {
@@ -194,8 +264,6 @@ class ChatViewModel: ObservableObject {
         return chunks
     }
 
-    // MARK: - Embeddings + Retrieval
-
     func embedChunks(_ chunks: [String]) async throws -> [[Float]] {
         guard let modelContainer = self.embedderModel else {
             throw NSError(
@@ -228,7 +296,7 @@ class ChatViewModel: ObservableObject {
                 normalize: true,
                 applyLayerNorm: true
             )
-            print(output.shape)
+            print("Embedding output shape: \(output.shape)")
 
             if let embeddings = output.asArray(Float.self) as? [[Float]] {
                 return embeddings
@@ -269,7 +337,7 @@ class ChatViewModel: ObservableObject {
         return zip(a, b).map(*).reduce(0, +)
     }
 
-    // MARK: - System Prompt
+    // MARK: - System prompt & send
 
     let SYSTEM_PROMPT = """
        You are an expert who only teaches data activism and Python programming to K–12 students. 
@@ -279,15 +347,6 @@ class ChatViewModel: ObservableObject {
            For general programming questions (like "How to create a function?"), give a full explanation with a short example, but do not solve specific problems.  
            If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
        """
-
-    // MARK: - RAG PDF Setter (used by ContentView.uploadCourseView)
-
-    func setRAGPDF(url: URL) {
-        currentRAGPDFURL = url
-        print("RAG PDF set to: \(url.path)")
-    }
-
-    // MARK: - Chat Send Logic (with topic gating + coding scaffold detection)
 
     func send() {
         guard let session = self.session, !self.input.isEmpty else { return }
@@ -302,14 +361,10 @@ class ChatViewModel: ObservableObject {
                 if let topic = classifyTopic(for: question) {
                     print("Predicted topic: \(topic)")
 
-                    let isCodingScaffold =
-                        question.contains("?") &&
-                        (question.contains("def") || question.contains(":"))
+                    let isCodingScaffold = question.contains("?") && (question.contains("def") || question.contains(":"))
 
                     if topic == "1" {
-                        // On-topic
                         if isCodingScaffold {
-                            // For scaffolded code, no RAG – just use the prompt
                             self.finalContext = ""
                             prompt = """
                             <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
@@ -317,7 +372,6 @@ class ChatViewModel: ObservableObject {
                             <|im_start|>assistant
                             """
                         } else {
-                            // On-topic, not a code scaffold: use RAG from selected PDF
                             let chunks = textChunker(for: question)
                             let chunkEmbeddings = try await embedChunks(chunks)
                             let topChunks = try await retrieveContext(
@@ -342,7 +396,6 @@ class ChatViewModel: ObservableObject {
                             """
                         }
                     } else {
-                        // Off-topic according to classifier – no RAG
                         self.finalContext = ""
                         prompt = """
                                  <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
@@ -366,9 +419,8 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Extra PDF → JSONL Helpers (unchanged)
+    // MARK: - Extra helpers (unchanged)
 
-    /// Extracts the most common nouns/proper nouns from given texts using NLTagger
     private func extractKeywords(from texts: [String], maxKeywords: Int = 20) -> [String] {
         var frequency: [String: Int] = [:]
         for text in texts {
@@ -384,12 +436,9 @@ class ChatViewModel: ObservableObject {
                 return true
             }
         }
-        return frequency.sorted { $0.value > $1.value }
-            .prefix(maxKeywords)
-            .map { $0.key }
+        return frequency.sorted { $0.value > $1.value }.prefix(maxKeywords).map { $0.key }
     }
 
-    /// Finds the user question with the highest semantic similarity to the assistant response.
     private func semanticMatch(userQuestions: [String], assistantResponse: String) async throws -> String? {
         let embeddings = try await embedChunks(userQuestions + [assistantResponse])
         let userEmbeddings = embeddings.dropLast()
@@ -401,19 +450,11 @@ class ChatViewModel: ObservableObject {
         return nil
     }
 
-    /// Cascading heuristic+semantic matching for user-assistant pairing
-    func matchUserQuestionsToAssistantResponses(
-        userQuestions: [String],
-        assistantResponses: [String]
-    ) async throws -> [(user: String, assistant: String)] {
+    func matchUserQuestionsToAssistantResponses(userQuestions: [String], assistantResponses: [String]) async throws -> [(user: String, assistant: String)] {
         var usedQuestions = Set<String>()
         var results: [(user: String, assistant: String)] = []
-
         for response in assistantResponses {
-            if let match = try await semanticMatch(
-                userQuestions: userQuestions.filter { !usedQuestions.contains($0) },
-                assistantResponse: response
-            ) {
+            if let match = try await semanticMatch(userQuestions: userQuestions.filter { !usedQuestions.contains($0) }, assistantResponse: response) {
                 if !usedQuestions.contains(match) {
                     results.append((user: match, assistant: response))
                     usedQuestions.insert(match)
@@ -423,7 +464,6 @@ class ChatViewModel: ObservableObject {
         return results
     }
 
-    // Updated method with requested changes:
     func extractPDFToJsonLines(from url: URL) async {
         do {
             guard let document = PDFDocument(url: url) else {
@@ -449,6 +489,12 @@ class ChatViewModel: ObservableObject {
                 return true
             }
 
+            struct ConversationExample: Codable {
+                let system: String
+                let user: String
+                let assistant: String
+            }
+
             let encoder = JSONEncoder()
             encoder.outputFormatting = []
 
@@ -457,10 +503,7 @@ class ChatViewModel: ObservableObject {
                 user: "USER INPUT HERE",
                 assistant: "ASSISTANT RESPONSE HERE"
             )
-            let systemPrompt: String = String(
-                data: try encoder.encode(examplePrompt),
-                encoding: .utf8
-            )!
+            let systemPrompt: String = String(data: try encoder.encode(examplePrompt), encoding: .utf8)!
 
             let documentsDirs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
             guard let documentsDir = documentsDirs.first else {
@@ -480,14 +523,9 @@ class ChatViewModel: ObservableObject {
                 userQuestions = ["USER INPUT HERE"]
             }
 
-            let pairs = try await matchUserQuestionsToAssistantResponses(
-                userQuestions: userQuestions,
-                assistantResponses: lines
-            )
+            let pairs = try await matchUserQuestionsToAssistantResponses(userQuestions: userQuestions, assistantResponses: lines)
 
-            let examples = pairs.map {
-                ConversationExample(system: systemPrompt, user: $0.user, assistant: $0.assistant)
-            }
+            let examples = pairs.map { ConversationExample(system: systemPrompt, user: $0.user, assistant: $0.assistant) }
 
             let splitIndex = Int(Double(examples.count) * 0.8)
             let trainingExamples = examples[0..<splitIndex]
@@ -496,12 +534,8 @@ class ChatViewModel: ObservableObject {
             let trainingURL = documentsDir.appendingPathComponent("training.jsonl")
             let validURL = documentsDir.appendingPathComponent("valid.jsonl")
 
-            let trainingContent = trainingExamples.map {
-                String(data: try! encoder.encode($0), encoding: .utf8)!
-            }.joined(separator: "\n")
-            let validContent = validExamples.map {
-                String(data: try! encoder.encode($0), encoding: .utf8)!
-            }.joined(separator: "\n")
+            let trainingContent = trainingExamples.map { String(data: try! encoder.encode($0), encoding: .utf8)! }.joined(separator: "\n")
+            let validContent = validExamples.map { String(data: try! encoder.encode($0), encoding: .utf8)! }.joined(separator: "\n")
 
             try trainingContent.write(to: trainingURL, atomically: true, encoding: .utf8)
             try validContent.write(to: validURL, atomically: true, encoding: .utf8)
@@ -512,7 +546,6 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    /// Extracts likely user questions (sentences ending with '?') from a PDF file.
     func extractQuestionsFromPDF(url: URL) -> [String] {
         guard let document = PDFDocument(url: url) else {
             print("Failed to load PDF")
@@ -538,15 +571,11 @@ class ChatViewModel: ObservableObject {
         return questions
     }
 
-    /// Gathers user questions from PDF, optional user_questions.txt, plus fallback examples.
     func gatherUserQuestions(fromPDF url: URL) -> [String] {
         var questions = Set<String>()
-
-        // 1. Extract from PDF
         let pdfQuestions = extractQuestionsFromPDF(url: url)
         questions.formUnion(pdfQuestions)
 
-        // 2. Try to load from user_questions.txt
         let documentsDirs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
         if let documentsDir = documentsDirs.first {
             let userQuestionsURL = documentsDir.appendingPathComponent("user_questions.txt")
@@ -559,11 +588,8 @@ class ChatViewModel: ObservableObject {
             }
         }
 
-        // 3. Filter out very short items
         let filtered = questions.filter { $0.count > 8 }
         var result = Array(filtered)
-
-        // 4. Fallback/generic examples if list is too small
         if result.count < 5 {
             result.append(contentsOf: [
                 "What does a variable do in Python?",

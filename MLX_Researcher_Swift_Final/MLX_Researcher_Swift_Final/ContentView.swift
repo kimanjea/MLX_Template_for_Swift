@@ -46,19 +46,24 @@ struct ChatUISession: Identifiable {
 
 struct ContentView: View {
     @StateObject private var vm = ChatViewModel()
-    @State private var selectedModel: String = "Gemma"
+
+    // This is just the UI’s notion of “which model name is selected”
+    @State private var selectedModel: String = "BLUECOMPUTER"
+
     @State private var ChatUISessions: [ChatUISession] = []
     @State private var selectedSessionID: UUID? = nil
-    @State private var historyFilterModel: String = "Gemma"
-    
+    @State private var historyFilterModel: String = "BLUECOMPUTER"
+
     @State private var thinkingStartDate: Date? = nil
     @State private var thinkingElapsed: Int = 0
 
-    // Upload tab state
+    // Model creation UI state (for drag & drop + name)
     @State private var showPDFImporter = false
-    @State private var selectedPDFName: String? = nil
     @State private var isDropTargeted: Bool = false
-    
+    @State private var pendingPDFURL: URL? = nil
+    @State private var newModelName: String = ""
+    @State private var nameFieldEnabled: Bool = false
+
     private let suggestedQuestions = [
         "What is data activism?",
         "What is a variable?",
@@ -66,7 +71,7 @@ struct ContentView: View {
         "What is a function?",
         "Examples of Data Activism"
     ]
-    
+
     private let welcomeColors: [Color] = [
         Color(hex: "#DE0058"),
         Color(hex: "#00B500"),
@@ -74,7 +79,7 @@ struct ContentView: View {
         Color(hex: "#1266E2"),
         Color(hex: "#663887")
     ]
-    
+
     private let chatColors: [Color] = [
         Color(hex: "#DE0058"),
         Color(hex: "#00B500"),
@@ -82,7 +87,8 @@ struct ContentView: View {
         Color(hex: "#663887"),
         Color(hex: "#DE0058")
     ]
-    
+
+    // Picker binding: syncs with current session + calls vm.setModelByName
     private var boundModel: Binding<String> {
         Binding(
             get: {
@@ -94,6 +100,8 @@ struct ContentView: View {
             },
             set: { newValue in
                 selectedModel = newValue
+                vm.setModelByName(newValue)
+
                 if let sessionID = selectedSessionID,
                    let index = ChatUISessions.firstIndex(where: { $0.id == sessionID }) {
                     ChatUISessions[index].model = newValue
@@ -101,12 +109,12 @@ struct ContentView: View {
             }
         )
     }
-    
+
     private var modelSections: [(key: String, value: [ChatUISession])] {
         Dictionary(grouping: ChatUISessions, by: { $0.model })
             .sorted { $0.key < $1.key }
     }
-    
+
     var body: some View {
         TabView {
             NavigationStack {
@@ -115,7 +123,7 @@ struct ContentView: View {
             .tabItem {
                 Label("Home", systemImage: "house.fill")
             }
-            
+
             NavigationStack {
                 modelPickerView
                     .navigationTitle("Model Selection")
@@ -123,19 +131,12 @@ struct ContentView: View {
             .tabItem {
                 Label("Select Model", systemImage: "cpu")
             }
-            
+
             historyView
                 .tabItem {
                     Label("History", systemImage: "clock")
                 }
-            
-            NavigationStack {
-                uploadCourseView
-            }
-            .tabItem {
-                Label("Upload Course", systemImage: "doc.badge.plus")
-            }
-            
+
             NavigationStack {
                 settingsView
             }
@@ -157,6 +158,8 @@ struct ContentView: View {
                 vm.messages = []
                 vm.input = ""
             }
+            // Make sure VM is on the same starting model
+            vm.setModelByName(selectedModel)
         }
         .onChange(of: selectedSessionID) { newValue in
             guard let sessionID = newValue,
@@ -167,6 +170,7 @@ struct ContentView: View {
             }
             vm.messages = session.messages
             selectedModel = session.model
+            vm.setModelByName(session.model)
         }
         .onChange(of: vm.isReady) { newValue in
             if !newValue {
@@ -177,65 +181,219 @@ struct ContentView: View {
             }
         }
     }
-    
-    // MARK: - Model Picker View
+
+    // MARK: - Model Picker + Create New Model
+
     private var modelPickerView: some View {
-        VStack(spacing: 24) {
+        VStack {
             Spacer()
-            
-            Image("Logo")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 100, height: 100)
-                .shadow(radius: 8)
-            
-            Image(systemName: "cpu")
-                .font(.system(size: 50))
-                .foregroundStyle(.blue.gradient)
-            
-            VStack(spacing: 8) {
-                Text("Select Model")
-                    .font(.title2.bold())
-                
-                Text("Choose an AI model for your conversation")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
+
+            HStack(alignment: .top, spacing: 32) {
+
+                // LEFT: Model chooser
+                VStack(spacing: 16) {
+                    Image("Logo")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 80, height: 80)
+                        .shadow(radius: 8)
+
+                    Text("Select Model")
+                        .font(.title2.bold())
+
+                    Text("Choose which course model to chat with.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    Picker("Model", selection: boundModel) {
+                        ForEach(vm.models, id: \.displayName) { cfg in
+                            Text(cfg.displayName).tag(cfg.displayName)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 220)
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+
+                // RIGHT: Create New Model (drag + name + save)
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Create New Model")
+                        .font(.title3.bold())
+
+                    GeometryReader { geo in
+                        let side = max(
+                            160.0,
+                            min(min(geo.size.width, geo.size.height) * 0.5, 260.0)
+                        )
+
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .fill(isDropTargeted ? Color.blue.opacity(0.2) : Color.gray.opacity(0.15))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 24)
+                                        .strokeBorder(Color.gray.opacity(0.3), lineWidth: 1)
+                                )
+                                .frame(width: side, height: side)
+                                .overlay {
+                                    // 🔹 NEW: show filename if a PDF is selected, otherwise default text
+                                    VStack(spacing: 8) {
+                                        if let url = pendingPDFURL {
+                                            Image(systemName: "doc.fill")
+                                                .font(.system(size: 40, weight: .regular))
+                                                .foregroundColor(.secondary)
+
+                                            Text(url.lastPathComponent)
+                                                .font(.headline)
+                                                .foregroundColor(.secondary)
+                                                .multilineTextAlignment(.center)
+                                                .lineLimit(2)
+                                                .truncationMode(.middle)
+
+                                            Text("Click to change file")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        } else {
+                                            Image(systemName: "arrow.up.doc")
+                                                .font(.system(size: 40, weight: .regular))
+                                                .foregroundColor(.secondary)
+
+                                            Text("Drop PDF here")
+                                                .font(.headline)
+                                                .foregroundColor(.secondary)
+
+                                            Text("or click to choose")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .padding()
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    showPDFImporter = true
+                                }
+                                .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
+                                    guard let provider = providers.first else { return false }
+
+                                    provider.loadItem(
+                                        forTypeIdentifier: UTType.fileURL.identifier,
+                                        options: nil
+                                    ) { item, error in
+                                        if let error = error {
+                                            print("Drop error: \(error.localizedDescription)")
+                                            return
+                                        }
+
+                                        if let data = item as? Data,
+                                           let url = URL(dataRepresentation: data, relativeTo: nil) {
+                                            handleNewPDF(url: url)
+                                        } else if let url = item as? URL {
+                                            handleNewPDF(url: url)
+                                        } else {
+                                            print("Drop: unsupported item \(String(describing: item))")
+                                        }
+                                    }
+
+                                    return true
+                                }
+                        }
+                    }
+                    .frame(height: 220)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Model Name")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        TextField("Model Name", text: $newModelName)
+                            .disabled(!nameFieldEnabled)
+                            .textFieldStyle(.roundedBorder)
+                            .opacity(nameFieldEnabled ? 1.0 : 0.4)
+                    }
+
+                    Button("Save Model") {
+                        guard let pdfURL = pendingPDFURL else { return }
+                        let trimmed = newModelName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return }
+
+                        // Create model in the VM
+                        vm.createModel(displayName: trimmed, ragPDFURL: pdfURL)
+                        vm.setModelByName(trimmed)
+
+                        // Update current session to use this new model
+                        selectedModel = trimmed
+                        if let sessionID = selectedSessionID,
+                           let index = ChatUISessions.firstIndex(where: { $0.id == sessionID }) {
+                            ChatUISessions[index].model = trimmed
+                        }
+
+                        // Reset UI state – this also resets the drop area label
+                        pendingPDFURL = nil
+                        newModelName = ""
+                        nameFieldEnabled = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .clipShape(RoundedRectangle(cornerRadius: 30))
+                    .disabled(pendingPDFURL == nil || newModelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
             }
-            
-            Picker("Model", selection: boundModel) {
-                Text("Gemma").tag("Gemma")
-                Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
-                Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
-            }
-            .pickerStyle(.menu)
-            .frame(maxWidth: 200)
-            
+            .padding(.horizontal, 32)
+
             Spacer()
         }
-        .padding()
-        .navigationTitle("Model Selection")
+        .padding(.vertical, 24)
+        .fileImporter(
+            isPresented: $showPDFImporter,
+            allowedContentTypes: [.pdf],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    handleNewPDF(url: url)
+                }
+            case .failure(let error):
+                print("fileImporter error: \(error.localizedDescription)")
+            }
+        }
     }
-    
+
+    private func handleNewPDF(url: URL) {
+        // Only accept PDFs
+        guard url.pathExtension.lowercased() == "pdf" else {
+            print("Selected file is not a PDF: \(url.lastPathComponent)")
+            return
+        }
+        Task { @MainActor in
+            pendingPDFURL = url       // <- drives the filename label
+            nameFieldEnabled = true
+            print("New PDF ready for model creation: \(url.path)")
+        }
+    }
+
+    // MARK: - Model/Embedder loading overlays
+
     private var modelLoadingOverlay: some View {
         Group {
             if vm.isModelLoading {
                 ZStack {
                     Color.black.opacity(0.6)
                         .ignoresSafeArea()
-                    
+
                     VStack(spacing: 20) {
                         Image("Logo")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 80, height: 80)
                             .shadow(radius: 10)
-                        
+
                         if let progress = vm.modelLoadProgress {
                             VStack(spacing: 12) {
                                 Text("Loading Model...")
                                     .font(.title3.bold())
-                                
+
                                 ProgressView(value: progress.fractionCompleted) {
                                     Text("\(Int(progress.fractionCompleted * 100))%")
                                         .font(.caption)
@@ -249,13 +407,13 @@ struct ContentView: View {
                             VStack(spacing: 12) {
                                 Text("Loading Model...")
                                     .font(.title3.bold())
-                                
+
                                 ProgressView()
                                     .progressViewStyle(.circular)
                                     .scaleEffect(1.2)
                             }
                         }
-                        
+
                         Text("Please wait...")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
@@ -273,24 +431,24 @@ struct ContentView: View {
             }
         }
     }
-    
+
     private var embeddermodelLoadingOverlay: some View {
         Group {
             if vm.isEmbedModelLoading {
                 ZStack {
                     Color.black.opacity(0.6)
                         .ignoresSafeArea()
-                    
+
                     VStack(spacing: 20) {
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.system(size: 60))
                             .foregroundStyle(.blue.gradient)
-                        
+
                         if let progress = vm.embedModelProgress {
                             VStack(spacing: 12) {
                                 Text("Loading Embedder...")
                                     .font(.title3.bold())
-                                
+
                                 ProgressView(value: progress.fractionCompleted) {
                                     Text("\(Int(progress.fractionCompleted * 100))%")
                                         .font(.caption)
@@ -304,13 +462,13 @@ struct ContentView: View {
                             VStack(spacing: 12) {
                                 Text("Loading Embedder...")
                                     .font(.title3.bold())
-                                
+
                                 ProgressView()
                                     .progressViewStyle(.circular)
                                     .scaleEffect(1.2)
                             }
                         }
-                        
+
                         Text("Preparing embeddings...")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
@@ -328,8 +486,9 @@ struct ContentView: View {
             }
         }
     }
-    
-    // MARK: - Home View
+
+    // MARK: - Home View (chat UI)
+
     private var homeView: some View {
         VStack(spacing: 0) {
             Image("Logo")
@@ -338,7 +497,7 @@ struct ContentView: View {
                 .frame(width: 84, height: 84)
                 .shadow(radius: 8)
                 .padding(.top, 24)
-            
+
             HStack(spacing: 16) {
                 Button(action: {
                     let newSession = ChatUISession(
@@ -358,7 +517,7 @@ struct ContentView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 30))
             }
             .padding([.top, .horizontal])
-            
+
             if vm.messages.isEmpty {
                 welcomeView
             } else {
@@ -378,7 +537,7 @@ struct ContentView: View {
         .overlay(modelLoadingOverlay)
         .overlay(embeddermodelLoadingOverlay)
     }
-    
+
     private var welcomeView: some View {
         VStack(spacing: 32) {
             Spacer()
@@ -389,7 +548,7 @@ struct ContentView: View {
                     .font(.title3)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                
+
                 VStack(spacing: 12) {
                     HStack(spacing: 12) {
                         ForEach(Array(suggestedQuestions.prefix(3).enumerated()), id: \.element) { (index, question) in
@@ -461,7 +620,7 @@ struct ContentView: View {
             }
         }
     }
-    
+
     private var inputView: some View {
         ZStack {
             VStack(spacing: 0) {
@@ -485,7 +644,7 @@ struct ContentView: View {
                         )
                         .lineLimit(1...12)
                         .disabled(!vm.isReady)
-                    
+
                     Button("Send") {
                         vm.send()
                     }
@@ -496,7 +655,7 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 24)
-                
+
                 if !vm.isReady {
                     Text("Thinking for \(thinkingElapsed) second(s)...")
                         .font(.caption)
@@ -524,114 +683,9 @@ struct ContentView: View {
             }
         }
     }
-    
-    // MARK: - Upload Course View (simplest drop + picker)
-    private var uploadCourseView: some View {
-        GeometryReader { geo in
-            let side = max(
-                220.0,
-                min(min(geo.size.width, geo.size.height) * 0.35, 420.0)
-            )
-            
-            ZStack {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(isDropTargeted ? Color.blue.opacity(0.2) : Color.gray.opacity(0.15))
-                    .frame(width: side, height: side)
-                    .overlay {
-                        VStack(spacing: 10) {
-                            if let name = selectedPDFName {
-                                Text(name)
-                                    .font(.headline)
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(2)
-                                    .padding(.horizontal, 16)
-                            } else {
-                                Image(systemName: "arrow.up.doc")
-                                    .font(.system(size: 48, weight: .regular))
-                                    .foregroundColor(.secondary)
-                                Text("Upload PDF")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding()
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        showPDFImporter = true
-                    }
-                    .onDrop(of: [.pdf], isTargeted: $isDropTargeted) { providers in
-                                        guard let provider = providers.first else { return false }
-                                        
-                                        // Ask the provider for a temporary PDF file we can copy
-                                        provider.loadFileRepresentation(forTypeIdentifier: UTType.pdf.identifier) { tempURL, error in
-                                            if let error = error {
-                                                print("Drop error: \(error.localizedDescription)")
-                                                return
-                                            }
-                                            guard let tempURL = tempURL else {
-                                                print("Drop: no URL returned")
-                                                return
-                                            }
-                                            
-                                            // Copy into Documents/RAGPDFs so we own the file path
-                                            let fm = FileManager.default
-                                            do {
-                                                let docs = try fm.url(
-                                                    for: .documentDirectory,
-                                                    in: .userDomainMask,
-                                                    appropriateFor: nil,
-                                                    create: true
-                                                )
-                                                let ragFolder = docs.appendingPathComponent("RAGPDFs")
-                                                
-                                                // Fresh folder each time
-                                                try? fm.removeItem(at: ragFolder)
-                                                try fm.createDirectory(at: ragFolder, withIntermediateDirectories: true)
-                                                
-                                                let dest = ragFolder.appendingPathComponent(tempURL.lastPathComponent)
-                                                if fm.fileExists(atPath: dest.path) {
-                                                    try fm.removeItem(at: dest)
-                                                }
-                                                try fm.copyItem(at: tempURL, to: dest)
-                                                
-                                                DispatchQueue.main.async {
-                                                    // Tell the ViewModel which PDF to use for RAG
-                                                    vm.setRAGPDF(url: dest)
-                                                    selectedPDFName = dest.lastPathComponent
-                                                    print("Drop: using file \(dest.path)")
-                                                }
-                                            } catch {
-                                                print("Drop copy error: \(error.localizedDescription)")
-                                            }
-                                        }
-                                        
-                                        return true
-                                    }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .padding()
-        .navigationTitle("PDF insertion")
-        .fileImporter(isPresented: $showPDFImporter,
-                      allowedContentTypes: [.pdf],
-                      allowsMultipleSelection: false) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    Task { @MainActor in
-                        vm.setRAGPDF(url: url)
-                        selectedPDFName = url.lastPathComponent
-                        print("Picker: using file \(url.path)")
-                    }
-                }
-            case .failure(let error):
-                print("fileImporter error: \(error.localizedDescription)")
-            }
-        }
-    }
-    
+
     // MARK: - History View
+
     private var historyView: some View {
         NavigationStack {
             List {
@@ -653,16 +707,16 @@ struct ContentView: View {
                     }
                     .buttonStyle(.bordered)
                     .clipShape(RoundedRectangle(cornerRadius: 30))
-                    
+
                     Picker("Model", selection: $historyFilterModel) {
-                        Text("Gemma").tag("Gemma")
-                        Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
-                        Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
+                        ForEach(vm.models, id: \.displayName) { cfg in
+                            Text(cfg.displayName).tag(cfg.displayName)
+                        }
                     }
                     .pickerStyle(.segmented)
                 }
                 .padding([.top, .horizontal])
-                
+
                 Section(header: Text("\(historyFilterModel)")) {
                     ForEach(ChatUISessions.filter { $0.model == historyFilterModel }.prefix(5)) { session in
                         VStack(alignment: .leading, spacing: 4) {
@@ -670,6 +724,7 @@ struct ContentView: View {
                                 selectedSessionID = session.id
                                 vm.messages = session.messages
                                 selectedModel = session.model
+                                vm.setModelByName(session.model)
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Conversation \(session.id.uuidString.prefix(5))")
@@ -698,8 +753,9 @@ struct ContentView: View {
             .navigationTitle("History")
         }
     }
-    
+
     // MARK: - Settings View
+
     private var settingsView: some View {
     #if os(macOS)
         ScrollView {
@@ -841,11 +897,11 @@ struct MessageBubble: View {
     let message: String
     let colorIndex: Int
     let chatColors: [Color]
-    
+
     private var isUser: Bool {
         message.starts(with: "You:")
     }
-    
+
     private var displayText: String {
         if isUser {
             return String(message.dropFirst(4))
@@ -854,7 +910,7 @@ struct MessageBubble: View {
         }
         return message
     }
-    
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if isUser {
