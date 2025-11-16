@@ -360,32 +360,6 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    /// Finds the user question with the highest semantic similarity to the assistant response.
-    private func semanticMatch(userQuestions: [String], assistantResponse: String) async throws -> String? {
-        let embeddings = try await embedChunksWithQwen(userQuestions + [assistantResponse])
-        let userEmbeddings = embeddings.dropLast()
-        let responseEmbedding = embeddings.last!
-        let similarities = userEmbeddings.map { dotProduct($0, responseEmbedding) }
-        if let maxIndex = similarities.enumerated().max(by: { $0.element < $1.element })?.offset {
-            return userQuestions[maxIndex]
-        }
-        return nil
-    }
-    
-    /// semantic matching for user-assistant pairing
-    func matchUserQuestionsToAssistantResponses(userQuestions: [String], assistantResponses: [String]) async throws -> [(user: String, assistant: String)] {
-        var usedQuestions = Set<String>()
-        var results: [(user: String, assistant: String)] = []
-        for response in assistantResponses {
-            if let match = try await semanticMatch(userQuestions: userQuestions.filter { !usedQuestions.contains($0) }, assistantResponse: response) {
-                if !usedQuestions.contains(match) {
-                    results.append((user: match, assistant: response))
-                    usedQuestions.insert(match)
-                }
-            }
-        }
-        return results
-    }
     
     // Updated method with requested changes:
     func extractPDFToJsonLines(from url: URL) async {
@@ -472,65 +446,6 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-
-
-    /// Extracts likely user questions (sentences ending with '?') from a PDF file.
-    func extractQuestionsFromPDF(url: URL) -> [String] {
-        guard let document = PDFDocument(url: url) else {
-            print("Failed to load PDF")
-            return []
-        }
-        var allText = ""
-        for pageIndex in 0..<document.pageCount {
-            if let page = document.page(at: pageIndex),
-               let pageText = page.string {
-                allText += pageText + "\n"
-            }
-        }
-        let tokenizer = NLTokenizer(unit: .sentence)
-        tokenizer.string = allText
-        var questions: [String] = []
-        tokenizer.enumerateTokens(in: allText.startIndex..<allText.endIndex) { range, _ in
-            let sentence = allText[range].trimmingCharacters(in: .whitespacesAndNewlines)
-            if sentence.hasSuffix("?") {
-                questions.append(sentence)
-            }
-            return true
-        }
-        return questions
-    }
-    
-    /// Gathers user questions from PDF, optional user_questions.txt, plus fallback examples.
-    func gatherUserQuestions(fromPDF url: URL) -> [String] {
-        var questions = Set<String>()
-        // 1. Extract from PDF
-        let pdfQuestions = extractQuestionsFromPDF(url: url)
-        questions.formUnion(pdfQuestions)
-        // 2. Try to load from user_questions.txt
-        let documentsDirs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
-        if let documentsDir = documentsDirs.first {
-            let userQuestionsURL = documentsDir.appendingPathComponent("user_questions.txt")
-            if let questionsData = try? Data(contentsOf: userQuestionsURL),
-               let questionsString = String(data: questionsData, encoding: .utf8) {
-                let txtQuestions = questionsString.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                questions.formUnion(txtQuestions.filter { !$0.isEmpty })
-            }
-        }
-        // 3. Filter out very short items
-        let filtered = questions.filter { $0.count > 8 }
-        var result = Array(filtered)
-        // 4. Fallback/generic examples if list is too small
-        if result.count < 5 {
-            result.append(contentsOf: [
-                "What does a variable do in Python?",
-                "How can I use a for loop?",
-                "What is data activism?",
-                "How do I read a CSV file?",
-                "What does it mean to analyze data?"
-            ])
-        }
-        return Array(Set(result))
-    }
 
 }
 
