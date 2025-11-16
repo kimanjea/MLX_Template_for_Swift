@@ -417,7 +417,6 @@ class ChatViewModel: ObservableObject {
             }
             
             let encoder = JSONEncoder()
-            encoder.outputFormatting = []
             
             // 3. Plain system prompt string (no double-encoding)
             let systemPrompt = """
@@ -427,58 +426,24 @@ class ChatViewModel: ObservableObject {
             // 4. Use your repo directory, not sandbox
             let documentsDir = URL(fileURLWithPath: "/Users/AVLA Student/Documents/GitHub/MLX_Template_for_Swift/MLX_Researcher_Swift_Final/MLX_Researcher_Swift_Final")
             print("Using directory:", documentsDir.path)
-            
-            // 5. Load user questions from user_questions.txt in that folder
-            let userQuestionsURL = documentsDir.appendingPathComponent("user_questions.txt")
-            let userQuestions: [String]
-            if let questionsData = try? Data(contentsOf: userQuestionsURL),
-               let questionsString = String(data: questionsData, encoding: .utf8) {
-                userQuestions = questionsString
-                    .components(separatedBy: .newlines)
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-            } else {
-                print("Warning: user_questions.txt not found or empty. Using placeholder questions.")
-                userQuestions = ["USER INPUT HERE"]
+            let jsonlLines = lines.map { sentence -> String in
+                let dict = ["text": "Instruction: \(systemPrompt)\nAssistant: \(sentence)"]
+                let data = try! encoder.encode(dict)
+                return String(data: data, encoding: .utf8)!
             }
             
-            // 6. Pair user questions with assistant responses (sentences from PDF)
-            let pairs = try await matchUserQuestionsToAssistantResponses(
-                userQuestions: userQuestions,
-                assistantResponses: lines
-            )
-            
-            // 7. Build ConversationExample objects
-            let examples = pairs.map {
-                ConversationExample(
-                    system: systemPrompt,
-                    user: $0.user,
-                    assistant: $0.assistant
-                )
-            }
-            
-            guard !examples.isEmpty else {
-                print("No examples generated; nothing to write.")
-                return
-            }
             
             // 8. Split into train / valid (80 / 20)
-            let splitIndex = Int(Double(examples.count) * 0.8)
-            let trainingExamples = examples[..<splitIndex]
-            let validExamples = examples[splitIndex...]
+            let splitIndex = Int(Double(jsonlLines.count) * 0.8)
+            let trainingLines = jsonlLines[..<splitIndex]
+            let validLines = jsonlLines[splitIndex...]
             
             let trainingURL = documentsDir.appendingPathComponent("train.jsonl")
             let validURL    = documentsDir.appendingPathComponent("valid.jsonl")
             
-            let trainingContent = trainingExamples
-                .map { String(data: try! encoder.encode($0), encoding: .utf8)! }
-                .joined(separator: "\n")
-            
-            let validContent = validExamples
-                .map { String(data: try! encoder.encode($0), encoding: .utf8)! }
-                .joined(separator: "\n")
-            
+
             // 9. Append to train.jsonl
+            let trainingContent = trainingLines.joined(separator: "\n")
             if let handle = try? FileHandle(forWritingTo: trainingURL) {
                 handle.seekToEndOfFile()
                 if let data = ("\n" + trainingContent).data(using: .utf8) {
@@ -488,8 +453,9 @@ class ChatViewModel: ObservableObject {
             } else {
                 try trainingContent.write(to: trainingURL, atomically: true, encoding: .utf8)
             }
-            
+
             // 10. Append to valid.jsonl
+            let validContent = validLines.joined(separator: "\n")
             if let handle = try? FileHandle(forWritingTo: validURL) {
                 handle.seekToEndOfFile()
                 if let data = ("\n" + validContent).data(using: .utf8) {
