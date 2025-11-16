@@ -446,7 +446,7 @@ class ChatViewModel: ObservableObject {
             let trainingContent = trainingLines.joined(separator: "\n")
             if let handle = try? FileHandle(forWritingTo: trainingURL) {
                 handle.seekToEndOfFile()
-                if let data = ("\n" + trainingContent).data(using: .utf8) {
+                if let data = (trainingContent).data(using: .utf8) {
                     handle.write(data)
                 }
                 handle.closeFile()
@@ -458,7 +458,7 @@ class ChatViewModel: ObservableObject {
             let validContent = validLines.joined(separator: "\n")
             if let handle = try? FileHandle(forWritingTo: validURL) {
                 handle.seekToEndOfFile()
-                if let data = ("\n" + validContent).data(using: .utf8) {
+                if let data = (validContent).data(using: .utf8) {
                     handle.write(data)
                 }
                 handle.closeFile()
