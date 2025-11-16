@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UniformTypeIdentifiers
 
 extension Color {
     init(hex: String) {
@@ -8,12 +9,21 @@ extension Color {
         Scanner(string: hex).scanHexInt64(&int)
         let a, r, g, b: UInt64
         switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        case 3:
+            (a, r, g, b) = (255,
+                            (int >> 8) * 17,
+                            (int >> 4 & 0xF) * 17,
+                            (int & 0xF) * 17)
+        case 6:
+            (a, r, g, b) = (255,
+                            int >> 16,
+                            int >> 8 & 0xFF,
+                            int & 0xFF)
+        case 8:
+            (a, r, g, b) = (int >> 24,
+                            int >> 16 & 0xFF,
+                            int >> 8 & 0xFF,
+                            int & 0xFF)
         default:
             (a, r, g, b) = (255, 0, 0, 0)
         }
@@ -27,7 +37,6 @@ extension Color {
     }
 }
 
-// 1. Add a struct for a chat session at the top (for demo purposes).
 struct ChatUISession: Identifiable {
     let id: UUID
     var model: String
@@ -38,14 +47,17 @@ struct ChatUISession: Identifiable {
 struct ContentView: View {
     @StateObject private var vm = ChatViewModel()
     @State private var selectedModel: String = "Gemma"
-    // 2. Replace single session ID with multi-session state:
     @State private var ChatUISessions: [ChatUISession] = []
     @State private var selectedSessionID: UUID? = nil
     @State private var historyFilterModel: String = "Gemma"
     
-    // Added state for thinking timer
     @State private var thinkingStartDate: Date? = nil
     @State private var thinkingElapsed: Int = 0
+
+    // Upload tab state
+    @State private var showPDFImporter = false
+    @State private var selectedPDFName: String? = nil
+    @State private var isDropTargeted: Bool = false
     
     private let suggestedQuestions = [
         "What is data activism?",
@@ -66,9 +78,9 @@ struct ContentView: View {
     private let chatColors: [Color] = [
         Color(hex: "#DE0058"),
         Color(hex: "#00B500"),
-        Color(hex: "#EDC300"),
         Color(hex: "#1266E2"),
-        Color(hex: "#663887")
+        Color(hex: "#663887"),
+        Color(hex: "#DE0058")
     ]
     
     private var boundModel: Binding<String> {
@@ -97,28 +109,49 @@ struct ContentView: View {
     
     var body: some View {
         TabView {
-            Tab("Home", systemImage: "house.fill") {
+            NavigationStack {
                 homeView
             }
-            
-            TabSection("History") {
-                Tab("Recent", systemImage: "clock") {
-                    historyView
-                }
+            .tabItem {
+                Label("Home", systemImage: "house.fill")
             }
-            .defaultVisibility(.hidden, for: .tabBar)
             
-            TabSection("Settings") {
-                Tab("Settings", systemImage: "gearshape") {
-                    settingsView
-                }
+            NavigationStack {
+                modelPickerView
+                    .navigationTitle("Model Selection")
             }
-            .defaultVisibility(.hidden, for: .tabBar)
+            .tabItem {
+                Label("Select Model", systemImage: "cpu")
+            }
+            
+            historyView
+                .tabItem {
+                    Label("History", systemImage: "clock")
+                }
+            
+            NavigationStack {
+                uploadCourseView
+            }
+            .tabItem {
+                Label("Upload Course", systemImage: "doc.badge.plus")
+            }
+            
+            NavigationStack {
+                settingsView
+            }
+            .tabItem {
+                Label("Settings", systemImage: "gearshape")
+            }
         }
         .tabViewStyle(.sidebarAdaptable)
         .onAppear {
             if ChatUISessions.isEmpty {
-                let newSession = ChatUISession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                let newSession = ChatUISession(
+                    id: UUID(),
+                    model: selectedModel,
+                    messages: [],
+                    created: Date()
+                )
                 ChatUISessions.insert(newSession, at: 0)
                 selectedSessionID = newSession.id
                 vm.messages = []
@@ -136,7 +169,7 @@ struct ContentView: View {
             selectedModel = session.model
         }
         .onChange(of: vm.isReady) { newValue in
-            if newValue == false {
+            if !newValue {
                 thinkingStartDate = Date()
             } else {
                 thinkingStartDate = nil
@@ -145,25 +178,98 @@ struct ContentView: View {
         }
     }
     
-    // Added this computed property to reduce complexity in homeView
+    // MARK: - Model Picker View
+    private var modelPickerView: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            Image("Logo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 100, height: 100)
+                .shadow(radius: 8)
+            
+            Image(systemName: "cpu")
+                .font(.system(size: 50))
+                .foregroundStyle(.blue.gradient)
+            
+            VStack(spacing: 8) {
+                Text("Select Model")
+                    .font(.title2.bold())
+                
+                Text("Choose an AI model for your conversation")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Picker("Model", selection: boundModel) {
+                Text("Gemma").tag("Gemma")
+                Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
+                Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: 200)
+            
+            Spacer()
+        }
+        .padding()
+        .navigationTitle("Model Selection")
+    }
+    
     private var modelLoadingOverlay: some View {
         Group {
             if vm.isModelLoading {
-                if let progress = vm.modelLoadProgress {
-                    ProgressView(value: progress.fractionCompleted) {
-                        Text("Model Loading... \(Int(progress.fractionCompleted * 100))%")
+                ZStack {
+                    Color.black.opacity(0.6)
+                        .ignoresSafeArea()
+                    
+                    VStack(spacing: 20) {
+                        Image("Logo")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 80, height: 80)
+                            .shadow(radius: 10)
+                        
+                        if let progress = vm.modelLoadProgress {
+                            VStack(spacing: 12) {
+                                Text("Loading Model...")
+                                    .font(.title3.bold())
+                                
+                                ProgressView(value: progress.fractionCompleted) {
+                                    Text("\(Int(progress.fractionCompleted * 100))%")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .progressViewStyle(.linear)
+                                .frame(width: 200)
+                                .tint(.blue)
+                            }
+                        } else {
+                            VStack(spacing: 12) {
+                                Text("Loading Model...")
+                                    .font(.title3.bold())
+                                
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .scaleEffect(1.2)
+                            }
+                        }
+                        
+                        Text("Please wait...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                     }
-                    .progressViewStyle(.linear)
-                    .padding()
-                    .animation(.default, value: progress.fractionCompleted)
-                } else {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(1.3)
-                        .padding()
-                        .clipShape(Circle())
-                        .shadow(radius: 4)
+                    .padding(40)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(.regularMaterial)
+                            .shadow(color: .black.opacity(0.3),
+                                    radius: 20)
+                    )
                 }
+                .transition(.opacity)
+                .animation(.easeInOut, value: vm.isModelLoading)
             }
         }
     }
@@ -171,28 +277,59 @@ struct ContentView: View {
     private var embeddermodelLoadingOverlay: some View {
         Group {
             if vm.isEmbedModelLoading {
-                if let progress = vm.embedModelProgress {
-                    ProgressView(value: progress.fractionCompleted) {
-                        Text("Embedder Model Loading... \(Int(progress.fractionCompleted * 100))%")
+                ZStack {
+                    Color.black.opacity(0.6)
+                        .ignoresSafeArea()
+                    
+                    VStack(spacing: 20) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.system(size: 60))
+                            .foregroundStyle(.blue.gradient)
+                        
+                        if let progress = vm.embedModelProgress {
+                            VStack(spacing: 12) {
+                                Text("Loading Embedder...")
+                                    .font(.title3.bold())
+                                
+                                ProgressView(value: progress.fractionCompleted) {
+                                    Text("\(Int(progress.fractionCompleted * 100))%")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .progressViewStyle(.linear)
+                                .frame(width: 200)
+                                .tint(.blue)
+                            }
+                        } else {
+                            VStack(spacing: 12) {
+                                Text("Loading Embedder...")
+                                    .font(.title3.bold())
+                                
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .scaleEffect(1.2)
+                            }
+                        }
+                        
+                        Text("Preparing embeddings...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                     }
-                    .progressViewStyle(.linear)
-                    .padding()
-                    .animation(.default, value: progress.fractionCompleted)
-                } else {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(1.3)
-                        .padding()
-                        .clipShape(Circle())
-                        .shadow(radius: 4)
+                    .padding(40)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(.regularMaterial)
+                            .shadow(color: .black.opacity(0.3),
+                                    radius: 20)
+                    )
                 }
+                .transition(.opacity)
+                .animation(.easeInOut, value: vm.isEmbedModelLoading)
             }
         }
     }
     
-    
-    
-    // MARK: - Home View (Chat Interface)
+    // MARK: - Home View
     private var homeView: some View {
         VStack(spacing: 0) {
             Image("Logo")
@@ -204,8 +341,12 @@ struct ContentView: View {
             
             HStack(spacing: 16) {
                 Button(action: {
-                    // 3. Append new session and select it
-                    let newSession = ChatUISession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                    let newSession = ChatUISession(
+                        id: UUID(),
+                        model: selectedModel,
+                        messages: [],
+                        created: Date()
+                    )
                     ChatUISessions.insert(newSession, at: 0)
                     selectedSessionID = newSession.id
                     vm.messages = []
@@ -215,14 +356,6 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .clipShape(RoundedRectangle(cornerRadius: 30))
-                
-                Picker("Model", selection: boundModel) {
-                    Text("Gemma").tag("Gemma")
-                    Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
-                    Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
-                }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 180)
             }
             .padding([.top, .horizontal])
             
@@ -234,9 +367,8 @@ struct ContentView: View {
             inputView
         }
         .id(selectedSessionID ?? UUID())
-        .navigationTitle("Chat")
+        .navigationTitle("AVELA-CourseSLM")
         .onChange(of: vm.messages) { newMessages in
-            // 4. Update current session's messages when vm.messages changes (e.g. after sending)
             guard let sessionID = selectedSessionID,
                   let index = ChatUISessions.firstIndex(where: { $0.id == sessionID }) else {
                 return
@@ -245,7 +377,6 @@ struct ContentView: View {
         }
         .overlay(modelLoadingOverlay)
         .overlay(embeddermodelLoadingOverlay)
-        
     }
     
     private var welcomeView: some View {
@@ -276,7 +407,7 @@ struct ContentView: View {
                                             .fill(welcomeColors[index % welcomeColors.count])
                                     )
                             }
-                            .buttonStyle(.plain) // ✅ Removes extra rectangle
+                            .buttonStyle(.plain)
                             .accessibilityLabel(question)
                         }
                     }
@@ -296,7 +427,7 @@ struct ContentView: View {
                                             .fill(welcomeColors[(index + 3) % welcomeColors.count])
                                     )
                             }
-                            .buttonStyle(.plain) // ✅ Removes extra rectangle
+                            .buttonStyle(.plain)
                             .accessibilityLabel(question)
                         }
                     }
@@ -308,13 +439,14 @@ struct ContentView: View {
         .padding()
     }
 
-    
     private var messagesView: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(Array(vm.messages.enumerated()), id: \.offset) { index, message in
-                        MessageBubble(message: message, color: chatColors[index % chatColors.count])
+                        MessageBubble(message: message,
+                                      colorIndex: index,
+                                      chatColors: chatColors)
                             .id(index)
                     }
                 }
@@ -334,19 +466,36 @@ struct ContentView: View {
         ZStack {
             VStack(spacing: 0) {
                 Divider()
-                HStack(spacing: 12) {
-                    TextField("Type a message...", text: $vm.input, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(1...4)
+                HStack(alignment: .top, spacing: 16) {
+                    TextField("Type a message...",
+                              text: $vm.input,
+                              axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 16))
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 24)
+                        .frame(minHeight: 120, alignment: .topLeading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 28)
+                                .fill(Color.gray.opacity(0.1))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 28)
+                                .stroke(Color.gray.opacity(0.3), lineWidth: 1.5)
+                        )
+                        .lineLimit(1...12)
                         .disabled(!vm.isReady)
+                    
                     Button("Send") {
                         vm.send()
                     }
                     .buttonStyle(.borderedProminent)
                     .clipShape(RoundedRectangle(cornerRadius: 30))
+                    .padding(.top, 20)
                     .disabled(vm.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !vm.isReady)
                 }
-                .padding()
+                .padding(.horizontal, 24)
+                .padding(.vertical, 24)
                 
                 if !vm.isReady {
                     Text("Thinking for \(thinkingElapsed) second(s)...")
@@ -365,11 +514,108 @@ struct ContentView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 8)
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(
+            Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+        ) { _ in
             if let start = thinkingStartDate, !vm.isReady {
                 thinkingElapsed = Int(Date().timeIntervalSince(start))
             } else {
                 thinkingElapsed = 0
+            }
+        }
+    }
+    
+    // MARK: - Upload Course View (simplest drop + picker)
+    private var uploadCourseView: some View {
+        GeometryReader { geo in
+            let side = max(
+                220.0,
+                min(min(geo.size.width, geo.size.height) * 0.35, 420.0)
+            )
+            
+            ZStack {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(isDropTargeted ? Color.blue.opacity(0.2) : Color.gray.opacity(0.15))
+                    .frame(width: side, height: side)
+                    .overlay {
+                        VStack(spacing: 10) {
+                            if let name = selectedPDFName {
+                                Text(name)
+                                    .font(.headline)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .padding(.horizontal, 16)
+                            } else {
+                                Image(systemName: "arrow.up.doc")
+                                    .font(.system(size: 48, weight: .regular))
+                                    .foregroundColor(.secondary)
+                                Text("Upload PDF")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        showPDFImporter = true
+                    }
+                    .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
+                        guard let provider = providers.first else { return false }
+
+                        // Ask for a file URL from the drag
+                        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier,
+                                          options: nil) { item, error in
+                            if let error = error {
+                                print("Drop error: \(error.localizedDescription)")
+                                return
+                            }
+
+                            // Finder usually gives us the URL wrapped in Data
+                            if let data = item as? Data,
+                               let url = URL(dataRepresentation: data, relativeTo: nil) {
+
+                                Task { @MainActor in
+                                    // 1) Tell RAG to use this file
+                                    vm.setRAGPDF(url: url)
+                                    // 2) Update the label
+                                    selectedPDFName = url.lastPathComponent
+                                    print("Drop: using file \(url.path)")
+                                }
+
+                            } else if let url = item as? URL {
+                                // Fallback if we ever get a plain URL
+                                Task { @MainActor in
+                                    vm.setRAGPDF(url: url)
+                                    selectedPDFName = url.lastPathComponent
+                                    print("Drop: using file \(url.path)")
+                                }
+                            } else {
+                                print("Drop: unsupported item \(String(describing: item))")
+                            }
+                        }
+
+                        return true
+                    }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding()
+        .navigationTitle("PDF insertion")
+        .fileImporter(isPresented: $showPDFImporter,
+                      allowedContentTypes: [.pdf],
+                      allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    Task { @MainActor in
+                        vm.setRAGPDF(url: url)
+                        selectedPDFName = url.lastPathComponent
+                        print("Picker: using file \(url.path)")
+                    }
+                }
+            case .failure(let error):
+                print("fileImporter error: \(error.localizedDescription)")
             }
         }
     }
@@ -380,8 +626,12 @@ struct ContentView: View {
             List {
                 VStack(alignment: .leading, spacing: 12) {
                     Button(action: {
-                        // 3. Append new session and select it
-                        let newSession = ChatUISession(id: UUID(), model: selectedModel, messages: [], created: Date())
+                        let newSession = ChatUISession(
+                            id: UUID(),
+                            model: selectedModel,
+                            messages: [],
+                            created: Date()
+                        )
                         ChatUISessions.insert(newSession, at: 0)
                         selectedSessionID = newSession.id
                         vm.messages = []
@@ -402,7 +652,6 @@ struct ContentView: View {
                 }
                 .padding([.top, .horizontal])
                 
-                // Show only conversations matching the selected model
                 Section(header: Text("\(historyFilterModel)")) {
                     ForEach(ChatUISessions.filter { $0.model == historyFilterModel }.prefix(5)) { session in
                         VStack(alignment: .leading, spacing: 4) {
@@ -434,24 +683,6 @@ struct ContentView: View {
                         .padding(.vertical, 2)
                     }
                 }
-                /*
-                // 7. Remove older conversations for now
-                Section("Older Conversations") {
-                    ForEach(5..<10, id: \.self) { index in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Conversation \(index + 1)")
-                                .font(.headline)
-                            Text("Python and data analysis...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("\(index - 4) days ago")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-                */
             }
             .navigationTitle("History")
         }
@@ -462,7 +693,6 @@ struct ContentView: View {
     #if os(macOS)
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                // Appearance Section
                 Text("Appearance").font(.title3.bold()).padding(.bottom, 6)
                 HStack {
                     Label("Theme", systemImage: "paintbrush")
@@ -476,7 +706,6 @@ struct ContentView: View {
                 }
                 Divider()
 
-                // Behavior Section
                 Text("Behavior").font(.title3.bold()).padding(.bottom, 6)
                 HStack {
                     Label("Auto-send on Return", systemImage: "return")
@@ -495,7 +724,6 @@ struct ContentView: View {
                 }
                 Divider()
 
-                // Privacy Section
                 Text("Privacy").font(.title3.bold()).padding(.bottom, 6)
                 HStack {
                     Label("Analytics", systemImage: "chart.bar")
@@ -506,11 +734,9 @@ struct ContentView: View {
                     // Clear history action
                 } label: {
                     Label("Clear All History", systemImage: "trash")
-                        .clipShape(RoundedRectangle(cornerRadius: 30))
                 }
                 Divider()
 
-                // About Section
                 Text("About").font(.title3.bold()).padding(.bottom, 6)
                 HStack {
                     Label("Version", systemImage: "info.circle")
@@ -527,14 +753,12 @@ struct ContentView: View {
                 } label: {
                     Label("Open Source Licenses", systemImage: "doc.text")
                 }
-
             }
             .padding(32)
             .frame(maxWidth: 500)
         }
         .navigationTitle("Settings")
     #else
-        // iPad/iOS
         Form {
             Section("Appearance") {
                 HStack {
@@ -576,7 +800,6 @@ struct ContentView: View {
                 } label: {
                     Label("Clear All History", systemImage: "trash")
                         .foregroundColor(.red)
-                        .clipShape(RoundedRectangle(cornerRadius: 30))
                 }
             }
             Section("About") {
@@ -602,10 +825,11 @@ struct ContentView: View {
     }
 }
 
-// Message bubble component
+// Message bubble
 struct MessageBubble: View {
     let message: String
-    let color: Color
+    let colorIndex: Int
+    let chatColors: [Color]
     
     private var isUser: Bool {
         message.starts(with: "You:")
@@ -621,22 +845,45 @@ struct MessageBubble: View {
     }
     
     var body: some View {
-        HStack {
+        HStack(alignment: .top, spacing: 12) {
             if isUser {
                 Spacer(minLength: 60)
-            }
-            
-            Text(displayText)
-                .font(.body)
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(color)
-                )
-            
-            if !isUser {
+                Text(displayText)
+                    .font(.body)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(chatColors[colorIndex % chatColors.count])
+                    )
+                Image(systemName: "person.fill")
+                    .foregroundColor(.white)
+                    .background(
+                        Circle()
+                            .fill(Color.gray)
+                            .frame(width: 36, height: 36)
+                    )
+                    .frame(width: 36, height: 36)
+            } else {
+                Image("Logo")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+                    .background(
+                        Circle()
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                    )
+                Text(displayText)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Color.gray.opacity(0.2))
+                    )
                 Spacer(minLength: 60)
             }
         }
