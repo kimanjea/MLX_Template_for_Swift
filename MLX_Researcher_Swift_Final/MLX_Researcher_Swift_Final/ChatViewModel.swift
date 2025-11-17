@@ -58,7 +58,7 @@ class ChatViewModel: ObservableObject {
         let defaultModel = CourseModelConfig(
             id: UUID(),
             displayName: "BLUECOMPUTER",
-            classifierName: "TopicClassifier",
+            classifierName: "GeneralTopicClassifierUSP 1",
             llmID: "ShukraJaliya/BLUECOMPUTER.2",
             ragPDFURL: nil,
             bundledRAGResourceName: "Final_Activity_v1"
