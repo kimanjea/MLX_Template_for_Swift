@@ -535,14 +535,64 @@ struct ContentView: View {
     // MARK: - Upload Course View (simplest drop + picker)
     private var uploadCourseView: some View {
         GeometryReader { geo in
-            let side = max(
-                220.0,
-                min(min(geo.size.width, geo.size.height) * 0.35, 420.0)
-            )
-            
-            ZStack {
+            // Precompute side length to reduce nested generic inference
+            let width = geo.size.width
+            let height = geo.size.height
+            let minSide = min(width, height)
+            let side: CGFloat = max(220.0, min(minSide * 0.35, 420.0))
+
+            VStack(spacing: 16) {
+                UploadDropTarget(side: side,
+                                 isDropTargeted: $isDropTargeted,
+                                 selectedPDFName: selectedPDFName,
+                                 onTap: { showPDFImporter = true },
+                                 onURLPicked: { url in
+                    vm.setRAGPDF(url: url)
+                                     selectedPDFName = url.lastPathComponent
+                                 })
+
+                TrainingControls(selectedPDFName: selectedPDFName,
+                                 isTraining: vm.isTraining,
+                                 trainingProgress: vm.trainingProgress,
+                                 didFinishExtraction: vm.didFinishExtraction,
+                                 onTrain: { vm.trainFromCurrentPDF() })
+                .frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding()
+        .navigationTitle("PDF insertion")
+        .fileImporter(isPresented: $showPDFImporter,
+                      allowedContentTypes: [.pdf],
+                      allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    Task { @MainActor in
+                        vm.setRAGPDF(url: url)
+                        selectedPDFName = url.lastPathComponent
+                        print("Picker: using file \(url.path)")
+                    }
+                }
+            case .failure(let error):
+                print("fileImporter error: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    private struct UploadDropTarget: View {
+        let side: CGFloat
+        @Binding var isDropTargeted: Bool
+        let selectedPDFName: String?
+        let onTap: () -> Void
+        let onURLPicked: (URL) -> Void
+
+        var body: some View {
+            let background = isDropTargeted ? Color.blue.opacity(0.2) : Color.gray.opacity(0.15)
+
+            return ZStack {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(isDropTargeted ? Color.blue.opacity(0.2) : Color.gray.opacity(0.15))
+                    .fill(background)
                     .frame(width: side, height: side)
                     .overlay {
                         VStack(spacing: 10) {
@@ -564,66 +614,81 @@ struct ContentView: View {
                         .padding()
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture {
-                        showPDFImporter = true
-                    }
-                    .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
-                        guard let provider = providers.first else { return false }
-
-                        // Ask for a file URL from the drag
-                        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier,
-                                          options: nil) { item, error in
-                            if let error = error {
-                                print("Drop error: \(error.localizedDescription)")
-                                return
-                            }
-
-                            // Finder usually gives us the URL wrapped in Data
-                            if let data = item as? Data,
-                               let url = URL(dataRepresentation: data, relativeTo: nil) {
-
-                                Task { @MainActor in
-                                    // 1) Tell RAG to use this file
-                                    vm.setRAGPDF(url: url)
-                                    // 2) Update the label
-                                    selectedPDFName = url.lastPathComponent
-                                    print("Drop: using file \(url.path)")
-                                }
-
-                            } else if let url = item as? URL {
-                                // Fallback if we ever get a plain URL
-                                Task { @MainActor in
-                                    vm.setRAGPDF(url: url)
-                                    selectedPDFName = url.lastPathComponent
-                                    print("Drop: using file \(url.path)")
-                                }
-                            } else {
-                                print("Drop: unsupported item \(String(describing: item))")
-                            }
-                        }
-
-                        return true
-                    }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .padding()
-        .navigationTitle("PDF insertion")
-        .fileImporter(isPresented: $showPDFImporter,
-                      allowedContentTypes: [.pdf],
-                      allowsMultipleSelection: false) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    Task { @MainActor in
-                        vm.setRAGPDF(url: url)
-                        selectedPDFName = url.lastPathComponent
-                        print("Picker: using file \(url.path)")
+            .onTapGesture { onTap() }
+            .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
+                guard let provider = providers.first else { return false }
+
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
+                    if let error = error {
+                        print("Drop error: \(error.localizedDescription)")
+                        return
+                    }
+
+                    if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                        Task { @MainActor in
+                            onURLPicked(url)
+                            print("Drop: using file \(url.path)")
+                        }
+                    } else if let url = item as? URL {
+                        Task { @MainActor in
+                            onURLPicked(url)
+                            print("Drop: using file \(url.path)")
+                        }
+                    } else {
+                        print("Drop: unsupported item \(String(describing: item))")
                     }
                 }
-            case .failure(let error):
-                print("fileImporter error: \(error.localizedDescription)")
+
+                return true
             }
+        }
+    }
+
+    private struct TrainingControls: View {
+        let selectedPDFName: String?
+        let isTraining: Bool
+        let trainingProgress: Double?
+        let didFinishExtraction: Bool
+        let onTrain: () -> Void
+
+        var body: some View {
+            VStack(spacing: 12) {
+                if selectedPDFName != nil {
+                    Button(action: { onTrain() }) {
+                        Label("Train from Uploaded PDF", systemImage: "hammer")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isTraining)
+
+                    if isTraining {
+                        Text(
+                            trainingProgress != nil
+                            ? "Training model (LoRA)…"
+                            : (didFinishExtraction ? "Preparing training data…" : "Extracting content…")
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                        
+                        if let progress = trainingProgress {
+                            VStack(spacing: 8) {
+                                ProgressView(value: progress, total: 1.0) {
+                                    Text("Progress...")
+                                }
+                                .frame(width: 220)
+                                Text("\(Int(progress * 100))%")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            ProgressView { Text("Please Wait..") }
+                                .frame(width: 220)
+                        }
+                    }
+                }
+            }
+            .padding(.top, 16)
         }
     }
     
@@ -918,3 +983,4 @@ struct MLX_templateApp: App {
         }
     }
 }
+

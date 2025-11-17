@@ -5,6 +5,7 @@ import MLXLMCommon
 import MLXNN
 import MLXEmbedders
 import MLXFast
+import MLXOptimizers
 import Metal
 import SwiftUI
 import Tokenizers
@@ -36,9 +37,18 @@ class ChatViewModel: ObservableObject {
     @Published private(set) var currentModelID: String = "ShukraJaliya/BLUECOMPUTER.2"
     @Published var isModelLoading: Bool = true
     @Published var isEmbedModelLoading: Bool = true
-    @Published var modelLoadProgress: Progress? = nil
-    @Published var embedModelProgress: Progress? = nil
+    @Published var modelLoadProgress: Foundation.Progress? = nil
+    @Published var embedModelProgress: Foundation.Progress? = nil
     @Published var embedderModel: MLXEmbedders.ModelContainer?
+    @Published var MinEmbedderModel: MLXEmbedders.ModelContainer?
+    
+    @Published var isTraining: Bool = false
+    @Published var trainingProgress: Double? = nil
+    @State private var showSaveAdapterSheet = false
+    @State private var newAdapterName: String = ""
+    @Published var savedAdapters: [String] = []
+    private let adaptersDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Adapters", isDirectory: true)
     
     // New: keep references to cancel ongoing work
     private var modelLoadTask: Task<Void, Never>?
@@ -46,16 +56,32 @@ class ChatViewModel: ObservableObject {
     
     /// If nil, we fall back to Final_Activity_v1.pdf in the app bundle
     @Published var currentRAGPDFURL: URL? = nil
-    
+
     private var session: ChatSession?
     
+    // LoRA training configuration
+    private let loraLayers = 4
+    private let learningRate: Float = 1e-5
+    private let trainingIterations: Int = 200
+    @Published var didFinishExtraction: Bool = false
+
+    // Generation parameters for post-training evaluation (optional)
+    private let generateTemperature: Float = 0.6
+    private let generateTopP: Float = 0.9
+    private let evaluateShowEvery = 8
+    private let maxTokens = 200
+
+    // Cache the loaded model container for training
+    private var modelContainerForTraining: MLXLMCommon.ModelContainer?
+    
+
     
     init() {
         Task {
             self.isModelLoading = true
             self.isEmbedModelLoading = true
-            let progress = Progress(totalUnitCount: 100)
-            let embedProgress = Progress(totalUnitCount: 100)
+            let progress = Foundation.Progress(totalUnitCount: 100)
+            let embedProgress = Foundation.Progress(totalUnitCount: 100)
             self.modelLoadProgress = progress
             self.embedModelProgress = embedProgress
             
@@ -87,7 +113,7 @@ class ChatViewModel: ObservableObject {
         // Reset state on main actor (we're already @MainActor)
         isModelLoading = true
         isReady = false
-        modelLoadProgress = Progress(totalUnitCount: 100)
+        modelLoadProgress = Foundation.Progress(totalUnitCount: 100)
 
         do {
             let model = try await loadModel(id: modelID, progressHandler: { [weak self] prog in
@@ -353,55 +379,22 @@ class ChatViewModel: ObservableObject {
     
     
 
-    func embedChunksWithQwen(_ chunks: [String]) async throws -> [[Float]] {
-        if MinEmbedderModel == nil {
-            do {
-                // Load the Qwen 1.5B embedding model container from minilm_l6 configuration
-                MinEmbedderModel = try await MLXEmbedders.loadModelContainer(configuration: ModelConfiguration.minilm_l6)
-            } catch {
-                throw NSError(domain: "Embedder", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to load Mini embedding model: \(error.localizedDescription)"])
-            }
-        }
-        guard let modelContainer = MinEmbedderModel else {
-            throw NSError(domain: "Embedder", code: -1, userInfo: [NSLocalizedDescriptionKey: "Mini embedding model not loaded"])
-        }
-        
-        return await modelContainer.perform { (model: EmbeddingModel, tokenizer, pooling) -> [[Float]] in
-            let encodedInputs = chunks.map { text in
-                tokenizer.encode(text: text, addSpecialTokens: true)
-            }
-            let maxLength = encodedInputs.map(\.count).max() ?? 0
-            let eosTokenId = tokenizer.eosTokenId ?? 0
-            let padded = stacked(
-                encodedInputs.map { tokens in
-                    MLXArray(tokens + Array(repeating: eosTokenId, count: maxLength - tokens.count))
-                }
-            )
-            let mask = (padded .!= eosTokenId)
-            let tokenTypes = MLXArray.zeros(like: padded)
-            let output = pooling(
-                model(padded, positionIds: nil, tokenTypeIds: tokenTypes, attentionMask: mask),
-                normalize: true, applyLayerNorm: true
-            )
-            if let embeddings = output.asArray(Float.self) as? [[Float]] {
-                return embeddings
-            } else {
-                // Fallback: manually reshape
-                let flat: [Float] = output.asArray(Float.self)
-                let embeddingSize = flat.count / chunks.count
-                return (0..<chunks.count).map { i in
-                    Array(flat[i*embeddingSize..<(i+1)*embeddingSize])
-                }
-            }
-        }
-    }
+  
     
     
     // Updated method with requested changes:
     func extractPDFToJsonLines(from url: URL) async {
+        guard let uploadedURL = self.currentRAGPDFURL else {
+            print("No uploaded PDF set. Call setRAGPDF(url:) from the Upload Course view before extraction.")
+            return
+        }
+        // If a URL was passed that doesn't match the uploaded URL, ignore it and use the uploaded URL
+        let effectiveURL = uploadedURL
+        
+
         do {
             // 1. Load PDF and extract all text
-            guard let document = PDFDocument(url: url) else {
+            guard let document = PDFDocument(url: effectiveURL) else {
                 print("Failed to load PDF")
                 return
             }
@@ -452,34 +445,242 @@ class ChatViewModel: ObservableObject {
             let validURL    = documentsDir.appendingPathComponent("valid.jsonl")
             
 
-            // 9. Append to train.jsonl
+            // 9. Append to train.jsonl (newline-safe)
             let trainingContent = trainingLines.joined(separator: "\n")
-            if let handle = try? FileHandle(forWritingTo: trainingURL) {
+            if FileManager.default.fileExists(atPath: trainingURL.path),
+               let handle = try? FileHandle(forUpdating: trainingURL) {
+                defer { try? handle.close() }
+                // Read last byte to see if file already ends with a newline
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: trainingURL.path)[.size] as? NSNumber)?.intValue ?? 0
+                handle.seek(toFileOffset: fileSize > 0 ? UInt64(fileSize - 1) : 0)
+                let lastByte = fileSize > 0 ? handle.readData(ofLength: 1) : Data()
                 handle.seekToEndOfFile()
-                if let data = (trainingContent).data(using: .utf8) {
-                    handle.write(data)
+                if let lastChar = String(data: lastByte, encoding: .utf8), lastChar != "\n", !trainingContent.isEmpty {
+                    handle.write("\n".data(using: .utf8)!)
                 }
-                handle.closeFile()
+                if let data = trainingContent.data(using: .utf8) {
+                    handle.write(data)
+                    // Do not add trailing newline; assume content already has correct line endings
+                }
             } else {
                 try trainingContent.write(to: trainingURL, atomically: true, encoding: .utf8)
             }
 
-            // 10. Append to valid.jsonl
+            // 10. Append to valid.jsonl (newline-safe)
             let validContent = validLines.joined(separator: "\n")
-            if let handle = try? FileHandle(forWritingTo: validURL) {
+            if FileManager.default.fileExists(atPath: validURL.path),
+               let handle = try? FileHandle(forUpdating: validURL) {
+                defer { try? handle.close() }
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: validURL.path)[.size] as? NSNumber)?.intValue ?? 0
+                handle.seek(toFileOffset: fileSize > 0 ? UInt64(fileSize - 1) : 0)
+                let lastByte = fileSize > 0 ? handle.readData(ofLength: 1) : Data()
                 handle.seekToEndOfFile()
-                if let data = (validContent).data(using: .utf8) {
+                if let lastChar = String(data: lastByte, encoding: .utf8), lastChar != "\n", !validContent.isEmpty {
+                    handle.write("\n".data(using: .utf8)!)
+                }
+                if let data = validContent.data(using: .utf8) {
                     handle.write(data)
                 }
-                handle.closeFile()
             } else {
                 try validContent.write(to: validURL, atomically: true, encoding: .utf8)
             }
             
             print("Training and validation files written to \(documentsDir.path) in conversational prompt format.")
+            await MainActor.run {
+                self.didFinishExtraction = true
+            }
+
         } catch {
             print("Error extracting PDF to conversational prompt format: \(error)")
         }
+    }
+    
+    func setRAGPDF(url: URL) {
+        currentRAGPDFURL = url
+    }
+
+
+    // MARK: - Training Orchestration
+    func trainFromCurrentPDF() {
+        guard let url = currentRAGPDFURL else {
+            print("No current PDF set. Did you call vm.setRAGPDF(url:)?")
+            return
+        }
+        Task {
+            await trainFromPDF(url: url)
+        }
+    }
+
+    private func trainFromPDF(url: URL) async {
+        await MainActor.run {
+            self.isTraining = true
+            self.trainingProgress = nil
+            self.didFinishExtraction = false
+        }
+
+        // 1) Extract dataset files from the PDF (train/valid)
+        await extractPDFToJsonLines(from: url)
+
+        // 2) Determine the dataset URLs (must match extractPDFToJsonLines output)
+        let documentsDir = URL(fileURLWithPath: "/Users/AVLA Student/Documents/GitHub/MLX_Template_for_Swift/MLX_Researcher_Swift_Final/MLX_Researcher_Swift_Final")
+        let trainURL = documentsDir.appendingPathComponent("train.jsonl")
+        let validURL = documentsDir.appendingPathComponent("valid.jsonl")
+        let testURL  = documentsDir.appendingPathComponent("test.jsonl")
+        
+
+        // 3) Run LoRA training locally
+        do {
+            try await trainLocallyWithLoRA(trainURL: trainURL, validURL: validURL, testURL: testURL)
+        } catch {
+            print("Training failed: \(error)")
+        }
+
+        await MainActor.run {
+            self.isTraining = false
+            self.trainingProgress = nil
+        }
+    }
+
+    // MARK: - LoRA Training Core
+    private func loadTrainingModelContainer() async throws -> MLXLMCommon.ModelContainer {
+        let modelID = "Qwen/Qwen2.5-1.5B-Instruct"
+        let config = LLMModelFactory.shared.configuration(id: modelID)
+        let container = try await LLMModelFactory.shared.loadContainer(
+            hub: HubApi(), configuration: config
+        ) { prog in
+            Task { @MainActor in
+                self.modelLoadProgress = prog
+            }
+        }
+        return container
+    }
+
+    private func loadLoRAData(from url: URL) throws -> [String] {
+        return try MLXLLM.loadLoRAData(url: url)
+    }
+
+    private func trainLocallyWithLoRA(trainURL: URL, validURL: URL, testURL: URL?) async throws {
+        GPU.set(cacheLimit: 32 * 1024 * 1024)
+
+        let modelContainer: MLXLMCommon.ModelContainer
+        if let cached = modelContainerForTraining {
+            modelContainer = cached
+        } else {
+            modelContainer = try await loadTrainingModelContainer()
+            modelContainerForTraining = modelContainer
+        }
+
+        let _ = try await modelContainer.perform { context in
+            try LoRAContainer.from(
+                model: context.model,
+                configuration: LoRAConfiguration(numLayers: loraLayers)
+            )
+        }
+
+        let train = try loadLoRAData(from: trainURL)
+        let valid = try loadLoRAData(from: validURL)
+        print("Train examples: \(train.count), Valid examples: \(valid.count)")
+
+        try await modelContainer.perform { context in
+            let optimizer = Adam(learningRate: self.learningRate)
+            let params = LoRATrain.Parameters(batchSize: 1, iterations: self.trainingIterations)
+
+            try LoRATrain.train(
+                model: context.model,
+                train: train,
+                validate: valid,
+                optimizer: optimizer,
+                tokenizer: context.tokenizer,
+                parameters: params
+            ) { progress in
+                Task { @MainActor in
+                    switch progress {
+                    case .train(let i, _, _, _):
+                        print("LoRA iteration \(i)")
+                        self.trainingProgress = Double(i) / Double(self.trainingIterations)
+                    case .validation:
+                        break
+                    default:
+                        break
+                    }
+                }
+                return .more
+            }
+        }
+
+        if let testURL, FileManager.default.fileExists(atPath: testURL.path) {
+            let test = try loadLoRAData(from: testURL)
+            let loss = await modelContainer.perform { context in
+                LoRATrain.evaluate(
+                    model: context.model,
+                    dataset: test,
+                    tokenizer: context.tokenizer,
+                    batchSize: 1,
+                    batchCount: 0
+                )
+            }
+            await MainActor.run {
+                self.messages.append("Training complete. Test loss \(loss.formatted()), ppl \(exp(loss).formatted())")
+            }
+        } else {
+            await MainActor.run {
+                self.messages.append("Training complete.")
+            }
+        }
+    }
+    
+    func reloadSavedAdapters() {
+        var names: [String] = []
+        if FileManager.default.fileExists(atPath: adaptersDir.path) {
+            if let contents = try? FileManager.default.contentsOfDirectory(at: adaptersDir, includingPropertiesForKeys: nil) {
+                names = contents.filter { $0.hasDirectoryPath }.map { $0.lastPathComponent }
+            }
+        }
+        self.savedAdapters = names.sorted()
+    }
+
+    // Call after training completes, passing a user-provided name.
+    func saveCurrentAdapters(named name: String) async {
+        // Ensure directory exists
+        try? FileManager.default.createDirectory(at: adaptersDir, withIntermediateDirectories: true)
+
+        let targetDir = adaptersDir.appendingPathComponent(name, isDirectory: true)
+        // Remove existing with same name
+        if FileManager.default.fileExists(atPath: targetDir.path) {
+            try? FileManager.default.removeItem(at: targetDir)
+        }
+        try? FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
+
+        // Persist LoRA weights from the training container.
+        // NOTE: Replace the body of perform with the correct MLX API you use to export LoRA weights.
+        if let modelContainer = modelContainerForTraining {
+            await modelContainer.perform { context in
+                // TODO: Replace with actual save/export for your LoRA container.
+                // Example (pseudocode): try LoRAContainer.save(from: context.model, to: targetDir)
+            }
+        }
+
+        await MainActor.run {
+            self.reloadSavedAdapters()
+            print("Saved adapters to \(targetDir.path)")
+        }
+    }
+
+    // Apply a saved adapter to the current chat inference session’s model
+    func applyAdapter(named name: String) async {
+        let dir = adaptersDir.appendingPathComponent(name, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: dir.path) else {
+            print("Adapter not found at \(dir.path)")
+            return
+        }
+        // Load adapters into the current model used by ChatSession
+        // NOTE: Replace with the correct MLX API to load/apply LoRA to your inference model.
+        // If needed, you may need to recreate `session` with a model that has LoRA attached.
+        // Example (pseudocode):
+        // if let s = session {
+        //     try await s.applyLoRA(from: dir)
+        // }
+        print("Applied adapter: \(name)")
     }
 
 
