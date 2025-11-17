@@ -358,7 +358,7 @@ class ChatViewModel: ObservableObject {
                         
                         self.finalContext = ""
                         prompt = """
-                                 <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                                 <|im_start|>system \((isAdapterActive ? SYSTEM_PROMPT2 : SYSTEM_PROMPT))<|im_end|>
                                  <|im_start|>user \(question)<|im_end|>
                                  <|im_start|>assistant
                                  """
@@ -742,6 +742,34 @@ class ChatViewModel: ObservableObject {
             self.messages.append("Failed to apply adapter: \(error.localizedDescription)")
         }
     }
+    
+    /// Delete a saved LoRA adapter directory and update the in-memory list.
+    func deleteAdapter(named name: String) {
+        let dir = adaptersDir.appendingPathComponent(name, isDirectory: true)
+
+        do {
+            if FileManager.default.fileExists(atPath: dir.path) {
+                try FileManager.default.removeItem(at: dir)
+                print("Deleted adapter at \(dir.path)")
+            } else {
+                print("Adapter directory not found at \(dir.path)")
+            }
+
+            // Remove from the in-memory list
+            if let idx = savedAdapters.firstIndex(of: name) {
+                savedAdapters.remove(at: idx)
+            }
+
+            // If this adapter was active, mark it inactive.
+            if isAdapterActive {
+                // You can also choose to reload a base model here if you want.
+                isAdapterActive = false
+            }
+        } catch {
+            print("Failed to delete adapter '\(name)': \(error)")
+        }
+    }
+
 
 
 }

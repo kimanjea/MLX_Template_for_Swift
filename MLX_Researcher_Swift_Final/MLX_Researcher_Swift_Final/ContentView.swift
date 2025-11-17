@@ -211,37 +211,43 @@ struct ContentView: View {
             }
             
             Picker("Model", selection: boundModel) {
+                // Base models
                 Text("Qwen/Qwen3-VL-2B-Instruct")
                     .tag("Qwen/Qwen3-VL-2B-Instruct")
                 Text("ShukraJaliya/BLUECOMPUTER.2")
                     .tag("ShukraJaliya/BLUECOMPUTER.2")
                 Text("Qwen/Qwen2.5-1.5B-Instruct")
                     .tag("Qwen/Qwen2.5-1.5B-Instruct")
-                
-                // Saved adapters (each represented as a pseudo-model ID like "adapter:NAME")
+
+                // Saved adapters with delete context menu
                 ForEach(vm.savedAdapters, id: \.self) { name in
-                    Text("Adapter: \(name)").tag("adapter:\(name)")
+                    Text("Adapter: \(name)")
+                        .tag("adapter:\(name)")
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                vm.deleteAdapter(named: name)
+                            } label: {
+                                Label("Delete Adapter", systemImage: "trash")
+                            }
+                        }
                 }
-            }   // <-- closes Picker
+            }
             .pickerStyle(.menu)
             .frame(maxWidth: 200)
             .onChange(of: boundModel.wrappedValue) { newModelID in
                 if newModelID.hasPrefix("adapter:") {
                     let adapterName = String(newModelID.dropFirst("adapter:".count))
-                    Task {
-                        await vm.applyAdapter(named: adapterName)
-                    }
+                    Task { await vm.applyAdapter(named: adapterName) }
                 } else {
                     vm.selectModel(newModelID)
                 }
             }
-            
+
             Spacer()
         }
         .padding()
         .navigationTitle("Model Selection")
     }
-
     
     private var modelLoadingOverlay: some View {
         Group {
