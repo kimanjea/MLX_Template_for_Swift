@@ -44,6 +44,23 @@ struct ChatUISession: Identifiable {
     let created: Date
 }
 
+struct ModelOption {
+    let id: String
+    let name: String
+}
+
+// Map backend IDs to user-friendly names
+let modelOptions: [ModelOption] = [
+    ModelOption(id: "Qwen/Qwen3-VL-2B-Instruct", name: "General Course1"),
+    ModelOption(id: "Qwen/Qwen2.5-1.5B-Instruct", name: "General Course2"),
+    ModelOption(id: "ShukraJaliya/BLUECOMPUTER.2", name: "Data Activism")
+]
+
+// Helper to get a display name for a model ID
+func nameFor(_ id: String) -> String {
+    modelOptions.first(where: { $0.id == id })?.name ?? id
+}
+
 struct ContentView: View {
     @StateObject private var vm = ChatViewModel()
     @State private var selectedModel: String = "ShukraJaliya/BLUECOMPUTER.2"
@@ -119,10 +136,10 @@ struct ContentView: View {
             
             NavigationStack {
                 modelPickerView
-                    .navigationTitle("Model Selection")
+                    .navigationTitle("Course Selection")
             }
             .tabItem {
-                Label("Select Model", systemImage: "cpu")
+                Label("Select Course", systemImage: "cpu")
             }
             
             historyView
@@ -197,7 +214,7 @@ struct ContentView: View {
                 .foregroundStyle(.blue.gradient)
             
             VStack(spacing: 8) {
-                Text("Select Model")
+                Text("Select course")
                     .font(.title2.bold())
                 
                 Text("Choose an AI model for your conversation")
@@ -207,9 +224,9 @@ struct ContentView: View {
             }
             
             Picker("Model", selection: boundModel) {
-                Text("Qwen/Qwen3-VL-2B-Instruct").tag("Qwen/Qwen3-VL-2B-Instruct")
-                Text("ShukraJaliya/BLUECOMPUTER.2").tag("ShukraJaliya/BLUECOMPUTER.2")
-                Text("Qwen/Qwen2.5-1.5B-Instruct").tag("Qwen/Qwen2.5-1.5B-Instruct")
+                ForEach(modelOptions, id: \.id) { option in
+                    Text(option.name).tag(option.id)
+                }
             }
             .pickerStyle(.menu)
             .frame(maxWidth: 200)
@@ -221,7 +238,7 @@ struct ContentView: View {
             Spacer()
         }
         .padding()
-        .navigationTitle("Model Selection")
+        .navigationTitle("Course Selection")
     }
     
     private var modelLoadingOverlay: some View {
@@ -240,7 +257,7 @@ struct ContentView: View {
                         
                         if let progress = vm.modelLoadProgress {
                             VStack(spacing: 12) {
-                                Text("Loading Model...")
+                                Text("Loading Course...")
                                     .font(.title3.bold())
                                 
                                 ProgressView(value: progress.fractionCompleted) {
@@ -254,7 +271,7 @@ struct ContentView: View {
                             }
                         } else {
                             VStack(spacing: 12) {
-                                Text("Loading Model...")
+                                Text("Loading Course...")
                                     .font(.title3.bold())
                                 
                                 ProgressView()
@@ -365,6 +382,12 @@ struct ContentView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 30))
             }
             .padding([.top, .horizontal])
+            
+            Text("Active course: \(nameFor(selectedModel))")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .padding(.horizontal)
+                .padding(.top, 4)
             
             if vm.messages.isEmpty {
                 welcomeView
@@ -650,16 +673,16 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
                     .clipShape(RoundedRectangle(cornerRadius: 30))
                     
-                    Picker("Model", selection: $historyFilterModel) {
-                        Text("Qwen/Qwen3-VL-2B-Instruct").tag("Qwen/Qwen3-VL-2B-Instruct")
-                        Text("ShukraJaliya/BLUECOMPUTER.2").tag("ShukraJaliya/BLUECOMPUTER.2")
-                        Text("Qwen/Qwen2.5-1.5B-Instruct").tag("Qwen/Qwen2.5-1.5B-Instruct")
+                    Picker("Course", selection: $historyFilterModel) {
+                        ForEach(modelOptions, id: \.id) { option in
+                            Text(option.name).tag(option.id)
+                        }
                     }
                     .pickerStyle(.segmented)
                 }
                 .padding([.top, .horizontal])
                 
-                Section(header: Text("\(historyFilterModel)")) {
+                Section(header: Text(nameFor(historyFilterModel))) {
                     ForEach(ChatUISessions.filter { $0.model == historyFilterModel }.prefix(5)) { session in
                         VStack(alignment: .leading, spacing: 4) {
                             Button {
