@@ -146,6 +146,12 @@ struct ContentView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .onAppear {
+            // 🔹 Sync local selection with whatever models the VM loaded (including persisted ones)
+            if let firstModel = vm.models.first {
+                selectedModel = firstModel.displayName
+                historyFilterModel = firstModel.displayName
+            }
+
             if ChatUISessions.isEmpty {
                 let newSession = ChatUISession(
                     id: UUID(),
@@ -158,10 +164,11 @@ struct ContentView: View {
                 vm.messages = []
                 vm.input = ""
             }
+
             // Make sure VM is on the same starting model
             vm.setModelByName(selectedModel)
         }
-        .onChange(of: selectedSessionID) { newValue in
+        .onChange(of: selectedSessionID, initial: false) { _, newValue in
             guard let sessionID = newValue,
                   let session = ChatUISessions.first(where: { $0.id == sessionID }) else {
                 vm.messages = []
@@ -172,7 +179,7 @@ struct ContentView: View {
             selectedModel = session.model
             vm.setModelByName(session.model)
         }
-        .onChange(of: vm.isReady) { newValue in
+        .onChange(of: vm.isReady, initial: false) { _, newValue in
             if !newValue {
                 thinkingStartDate = Date()
             } else {
@@ -527,7 +534,7 @@ struct ContentView: View {
         }
         .id(selectedSessionID ?? UUID())
         .navigationTitle("AVELA-CourseSLM")
-        .onChange(of: vm.messages) { newMessages in
+        .onChange(of: vm.messages, initial: false) { _, newMessages in
             guard let sessionID = selectedSessionID,
                   let index = ChatUISessions.firstIndex(where: { $0.id == sessionID }) else {
                 return
@@ -611,7 +618,7 @@ struct ContentView: View {
                 }
                 .padding()
             }
-            .onChange(of: vm.messages.count) { _ in
+            .onChange(of: vm.messages.count, initial: false) { _, _ in
                 if let lastIndex = vm.messages.indices.last {
                     withAnimation(.easeInOut(duration: 0.5)) {
                         proxy.scrollTo(lastIndex, anchor: .bottom)

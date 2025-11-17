@@ -67,6 +67,9 @@ class ChatViewModel: ObservableObject {
         self.models = [defaultModel]
         self.selectedModelID = defaultModel.id
 
+        // 🔹 NEW: Load any previously-saved user PDFs as models from Application Support
+        loadUserModelsFromDisk()
+
         Task {
             self.isModelLoading = true
             self.isEmbedModelLoading = true
@@ -127,6 +130,63 @@ class ChatViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Persistent storage helpers
+
+    /// Returns ~/Library/Application Support/CourseSLM/ragpdfs (creating it if needed).
+    private func ragPDFsDirectory() -> URL? {
+        let fm = FileManager.default
+        guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            print("Could not locate Application Support directory.")
+            return nil
+        }
+
+        let appDir = appSupport.appendingPathComponent("CourseSLM", isDirectory: true)
+        let ragDir = appDir.appendingPathComponent("ragpdfs", isDirectory: true)
+
+        do {
+            try fm.createDirectory(at: ragDir, withIntermediateDirectories: true)
+            return ragDir
+        } catch {
+            print("Failed to create ragpdfs directory: \(error)")
+            return nil
+        }
+    }
+
+    /// Scans ragpdfs folder and adds each PDF as a user model at startup.
+    private func loadUserModelsFromDisk() {
+        guard let ragDir = ragPDFsDirectory() else {
+            return
+        }
+
+        let fm = FileManager.default
+        guard let urls = try? fm.contentsOfDirectory(
+            at: ragDir,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+
+        let baseClassifier = currentConfig?.classifierName ?? "TopicClassifier"
+        let baseLLMID = currentConfig?.llmID ?? "ShukraJaliya/BLUECOMPUTER.2"
+
+        for url in urls where url.pathExtension.lowercased() == "pdf" {
+            let displayName = url.deletingPathExtension().lastPathComponent
+
+            let model = CourseModelConfig(
+                id: UUID(),
+                displayName: displayName,
+                classifierName: baseClassifier,
+                llmID: baseLLMID,
+                ragPDFURL: url,
+                bundledRAGResourceName: nil
+            )
+
+            models.append(model)
+            print("Loaded saved model '\(displayName)' from \(url.path)")
+        }
+    }
+
     // MARK: - Model management
 
     /// Called when user picks a different model from the dropdown (by name).
@@ -144,23 +204,51 @@ class ChatViewModel: ObservableObject {
     }
 
     /// Called when user clicks "Save Model" after providing a name + PDF.
+    /// The passed-in URL can be anywhere (Downloads, Desktop, etc.); we copy it
+    /// into ~/Library/Application Support/CourseSLM/ragpdfs and store that path.
     func createModel(displayName: String, ragPDFURL: URL) {
-        // For now, reuse same classifier + LLM as default.
         let base = currentConfig
+
+        guard let ragDir = ragPDFsDirectory() else {
+            print("createModel: could not resolve ragpdfs directory")
+            return
+        }
+
+        let fm = FileManager.default
+
+        // Use the chosen displayName as the base of the filename, but make it filesystem-safe
+        let safeName = displayName.replacingOccurrences(of: "/", with: "_")
+        let ext = ragPDFURL.pathExtension.isEmpty ? "pdf" : ragPDFURL.pathExtension
+
+        var destination = ragDir.appendingPathComponent("\(safeName).\(ext)")
+        var counter = 1
+        // Avoid overwriting if a file with the same name already exists
+        while fm.fileExists(atPath: destination.path) {
+            destination = ragDir.appendingPathComponent("\(safeName)_\(counter).\(ext)")
+            counter += 1
+        }
+
+        do {
+            try fm.copyItem(at: ragPDFURL, to: destination)
+            print("Copied RAG PDF to persistent location: \(destination.path)")
+        } catch {
+            print("Failed to copy RAG PDF into ragpdfs directory: \(error)")
+            return
+        }
 
         let newModel = CourseModelConfig(
             id: UUID(),
             displayName: displayName,
             classifierName: base?.classifierName ?? "TopicClassifier",
             llmID: base?.llmID ?? "ShukraJaliya/BLUECOMPUTER.2",
-            ragPDFURL: ragPDFURL,
-            bundledRAGResourceName: nil   // user models don't use bundled PDF
+            ragPDFURL: destination,           // 🔹 now points to our persistent copy
+            bundledRAGResourceName: nil       // user models don't use bundled PDF
         )
 
         models.append(newModel)
         selectedModelID = newModel.id
 
-        print("Created new model '\(displayName)' with RAG PDF = \(ragPDFURL.lastPathComponent)")
+        print("Created new model '\(displayName)' with RAG PDF = \(destination.lastPathComponent)")
     }
 
     // MARK: - Classifier, RAG, embeddings
