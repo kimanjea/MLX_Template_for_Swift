@@ -325,7 +325,7 @@ class ChatViewModel: ObservableObject {
                         if isCodingScaffold {
                             self.finalContext = ""
                             prompt = """
-                            <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                            <|im_start|>system \((isAdapterActive ? SYSTEM_PROMPT2 : SYSTEM_PROMPT))<|im_end|>
                             <|im_start|>user \(question)<|im_end|>
                             <|im_start|>assistant
                             """
@@ -342,7 +342,7 @@ class ChatViewModel: ObservableObject {
                             self.finalContext = topChunks.first ?? ""
                             
                             prompt = """
-                            <|im_start|>system \(SYSTEM_PROMPT) <|im_end|>
+                            <|im_start|>system \((isAdapterActive ? SYSTEM_PROMPT2 : SYSTEM_PROMPT))<|im_end|>
                             <|im_start|>user 
                             Question: \(question)
 
