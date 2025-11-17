@@ -295,13 +295,31 @@ class ChatViewModel: ObservableObject {
             let start = Date()
             do {
                 if self.currentModelID != "ShukraJaliya/BLUECOMPUTER.2" {
-                    // Skip classification and RAG for other models; use a simple prompt
-                    self.finalContext = ""
+                    
+                    // Skip classification
+                    let chunks = textChunker(for: question)
+                    let chunkEmbeddings = try await embedChunks(chunks)
+                    var topChunks = try await retrieveContext(
+                        question: question,
+                        chunks: chunks,
+                        chunkEmbeddings: chunkEmbeddings,
+                        topK: 1 // Change to more for more context
+                    )
+
+                    self.finalContext = topChunks.first ?? ""
+
                     prompt = """
-                    <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>
-                    <|im_start|>user \(question)<|im_end|>
+                    <|im_start|>system \(SYSTEM_PROMPT) <|im_end|>
+                    <|im_start|>user 
+                    Question: \(question)
+
+                    background information (for your reference if relevant, do not quote directly unless needed): 
+                    \(self.finalContext)
+                    ---
+                    Please answer in your own words, explaining concepts clearly for a K–12 student. <|im_end|>
                     <|im_start|>assistant
                     """
+                    
                 } else {
                     if let topic = classifyTopic(for: question) {
                         print("Predicted topic: \(topic)")
