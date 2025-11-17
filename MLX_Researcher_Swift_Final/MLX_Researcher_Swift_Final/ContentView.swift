@@ -54,6 +54,8 @@ struct ContentView: View {
     
     @State private var thinkingStartDate: Date? = nil
     @State private var thinkingElapsed: Int = 0
+    @State private var showSaveAdapterSheet = false
+    @State private var newAdapterName: String = ""
 
     // Upload tab state
     @State private var showPDFImporter = false
@@ -146,6 +148,7 @@ struct ContentView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .onAppear {
+            vm.reloadSavedAdapters()
             if ChatUISessions.isEmpty {
                 let newSession = ChatUISession(
                     id: UUID(),
@@ -182,6 +185,7 @@ struct ContentView: View {
     }
     
     // MARK: - Model Picker View
+    // MARK: - Model Picker View
     private var modelPickerView: some View {
         VStack(spacing: 24) {
             Spacer()
@@ -207,15 +211,29 @@ struct ContentView: View {
             }
             
             Picker("Model", selection: boundModel) {
-                Text("Qwen/Qwen3-VL-2B-Instruct").tag("Qwen/Qwen3-VL-2B-Instruct")
-                Text("ShukraJaliya/BLUECOMPUTER.2").tag("ShukraJaliya/BLUECOMPUTER.2")
-                Text("Qwen/Qwen2.5-1.5B-Instruct").tag("Qwen/Qwen2.5-1.5B-Instruct")
-            }
+                Text("Qwen/Qwen3-VL-2B-Instruct")
+                    .tag("Qwen/Qwen3-VL-2B-Instruct")
+                Text("ShukraJaliya/BLUECOMPUTER.2")
+                    .tag("ShukraJaliya/BLUECOMPUTER.2")
+                Text("Qwen/Qwen2.5-1.5B-Instruct")
+                    .tag("Qwen/Qwen2.5-1.5B-Instruct")
+                
+                // Saved adapters (each represented as a pseudo-model ID like "adapter:NAME")
+                ForEach(vm.savedAdapters, id: \.self) { name in
+                    Text("Adapter: \(name)").tag("adapter:\(name)")
+                }
+            }   // <-- closes Picker
             .pickerStyle(.menu)
             .frame(maxWidth: 200)
-            
             .onChange(of: boundModel.wrappedValue) { newModelID in
-                vm.selectModel(newModelID)
+                if newModelID.hasPrefix("adapter:") {
+                    let adapterName = String(newModelID.dropFirst("adapter:".count))
+                    Task {
+                        await vm.applyAdapter(named: adapterName)
+                    }
+                } else {
+                    vm.selectModel(newModelID)
+                }
             }
             
             Spacer()
@@ -223,6 +241,7 @@ struct ContentView: View {
         .padding()
         .navigationTitle("Model Selection")
     }
+
     
     private var modelLoadingOverlay: some View {
         Group {
@@ -533,52 +552,99 @@ struct ContentView: View {
     }
     
     // MARK: - Upload Course View (simplest drop + picker)
-    private var uploadCourseView: some View {
-        GeometryReader { geo in
-            // Precompute side length to reduce nested generic inference
-            let width = geo.size.width
-            let height = geo.size.height
-            let minSide = min(width, height)
-            let side: CGFloat = max(220.0, min(minSide * 0.35, 420.0))
+        private var uploadCourseView: some View {
+            GeometryReader { geo in
+                // Precompute side length
+                let width = geo.size.width
+                let height = geo.size.height
+                let minSide = min(width, height)
+                let side: CGFloat = max(220.0, min(minSide * 0.35, 420.0))
 
-            VStack(spacing: 16) {
-                UploadDropTarget(side: side,
-                                 isDropTargeted: $isDropTargeted,
-                                 selectedPDFName: selectedPDFName,
-                                 onTap: { showPDFImporter = true },
-                                 onURLPicked: { url in
-                    vm.setRAGPDF(url: url)
-                                     selectedPDFName = url.lastPathComponent
-                                 })
+                VStack(spacing: 16) {
+                    UploadDropTarget(
+                        side: side,
+                        isDropTargeted: $isDropTargeted,
+                        selectedPDFName: selectedPDFName,
+                        onTap: { showPDFImporter = true },
+                        onURLPicked: { url in
+                            vm.setRAGPDF(url: url)
+                            selectedPDFName = url.lastPathComponent
+                        }
+                    )
 
-                TrainingControls(selectedPDFName: selectedPDFName,
-                                 isTraining: vm.isTraining,
-                                 trainingProgress: vm.trainingProgress,
-                                 didFinishExtraction: vm.didFinishExtraction,
-                                 onTrain: { vm.trainFromCurrentPDF() })
-                .frame(maxWidth: .infinity)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .padding()
-        .navigationTitle("PDF insertion")
-        .fileImporter(isPresented: $showPDFImporter,
-                      allowedContentTypes: [.pdf],
-                      allowsMultipleSelection: false) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    Task { @MainActor in
-                        vm.setRAGPDF(url: url)
-                        selectedPDFName = url.lastPathComponent
-                        print("Picker: using file \(url.path)")
+                    TrainingControls(
+                        selectedPDFName: selectedPDFName,
+                        isTraining: vm.isTraining,
+                        trainingProgress: vm.trainingProgress,
+                        didFinishExtraction: vm.didFinishExtraction,
+                        onTrain: { vm.trainFromCurrentPDF() }
+                    )
+                    .frame(maxWidth: .infinity)
+
+                    // NEW: Save trained adapter button
+                    Button(action: {
+                        showSaveAdapterSheet = true
+                    }) {
+                        Label("Save Trained Adapter", systemImage: "square.and.arrow.down")
                     }
+                    .buttonStyle(.bordered)
+                    .disabled(vm.isTraining)
                 }
-            case .failure(let error):
-                print("fileImporter error: \(error.localizedDescription)")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding()
+            .navigationTitle("PDF insertion")
+            .fileImporter(
+                isPresented: $showPDFImporter,
+                allowedContentTypes: [.pdf],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    if let url = urls.first {
+                        Task { @MainActor in
+                            vm.setRAGPDF(url: url)
+                            selectedPDFName = url.lastPathComponent
+                            print("Picker: using file \(url.path)")
+                        }
+                    }
+                case .failure(let error):
+                    print("fileImporter error: \(error.localizedDescription)")
+                }
+            }
+            // NEW: sheet to name & save adapter
+            .sheet(isPresented: $showSaveAdapterSheet) {
+                NavigationStack {
+                    Form {
+                        Section("Adapter Name") {
+                            TextField("e.g. DataActivism_v1", text: $newAdapterName)
+                        }
+
+                        Section {
+                            Button("Save") {
+                                let name = newAdapterName
+                                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !name.isEmpty else { return }
+                                Task {
+                                    await vm.saveCurrentAdapters(named: name)
+                                }
+                                newAdapterName = ""
+                                showSaveAdapterSheet = false
+                            }
+                            .disabled(newAdapterName
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                                .isEmpty)
+
+                            Button("Cancel", role: .cancel) {
+                                showSaveAdapterSheet = false
+                            }
+                        }
+                    }
+                    .navigationTitle("Save Adapter")
+                }
             }
         }
-    }
+
     
     private struct UploadDropTarget: View {
         let side: CGFloat

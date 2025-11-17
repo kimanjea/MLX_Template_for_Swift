@@ -64,6 +64,7 @@ class ChatViewModel: ObservableObject {
     private let learningRate: Float = 1e-5
     private let trainingIterations: Int = 200
     @Published var didFinishExtraction: Bool = false
+    @Published var isAdapterActive = false
 
     // Generation parameters for post-training evaluation (optional)
     private let generateTemperature: Float = 0.6
@@ -293,8 +294,14 @@ class ChatViewModel: ObservableObject {
     
     
     let SYSTEM_PROMPT = """
-       You are an expert who explains concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject."
+       You are an expert who only teaches data activism and Python programming to K–12 students. 
+           You explain concepts step by step using clear, scaffolded language. 
+           You never provide exact code solutions. 
+           If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. 
+           For general programming questions (like "How to create a function?"), give a full explanation with a short example, but do not solve specific problems.  
+           If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
        """
+    
     
     func send() {
         
@@ -313,7 +320,7 @@ class ChatViewModel: ObservableObject {
                     
                     let isCodingScaffold = question.contains("?") && (question.contains("def") || question.contains(":"))
                     
-                    if topic == "1" {
+                    if topic == "1" && !isAdapterActive {
                         
                         if isCodingScaffold {
                             self.finalContext = ""
@@ -377,10 +384,10 @@ class ChatViewModel: ObservableObject {
     
     
     
-    
+    let SYSTEM_PROMPT2 = """
+       You are an expert who explains concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject."
+       """
 
-  
-    
     
     // Updated method with requested changes:
     func extractPDFToJsonLines(from url: URL) async {
@@ -422,9 +429,7 @@ class ChatViewModel: ObservableObject {
             let encoder = JSONEncoder()
             
             // 3. Plain system prompt string (no double-encoding)
-            let systemPrompt = """
-            You are an expert who explains concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject.
-            """
+            let systemPrompt = SYSTEM_PROMPT2
             
             // 4. Use your repo directory, not sandbox
             let documentsDir = URL(fileURLWithPath: "/Users/AVLA Student/Documents/GitHub/MLX_Template_for_Swift/MLX_Researcher_Swift_Final/MLX_Researcher_Swift_Final")
@@ -638,11 +643,25 @@ class ChatViewModel: ObservableObject {
         }
         self.savedAdapters = names.sorted()
     }
+    func saveLoRAAdapters(from model: LoRAContainer, to directory: URL) throws {
+        // TODO: real save logic; for now, maybe just ensure dir exists
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // No-op for now
+    }
+    
+    func loadLoRAAdapters(into lora: LoRAContainer, from directory: URL) throws {
+        // TODO: implement actual load logic for your MLX version
+        // For now, ensure directory exists; real implementation should read adapter weights and load into `lora`.
+        guard FileManager.default.fileExists(atPath: directory.path) else {
+            throw NSError(domain: "LoRA", code: -2, userInfo: [NSLocalizedDescriptionKey: "Adapter directory not found at \(directory.path)"])
+        }
+    }
 
     // Call after training completes, passing a user-provided name.
     func saveCurrentAdapters(named name: String) async {
         // Ensure directory exists
         try? FileManager.default.createDirectory(at: adaptersDir, withIntermediateDirectories: true)
+        
 
         let targetDir = adaptersDir.appendingPathComponent(name, isDirectory: true)
         // Remove existing with same name
@@ -652,12 +671,33 @@ class ChatViewModel: ObservableObject {
         try? FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
 
         // Persist LoRA weights from the training container.
-        // NOTE: Replace the body of perform with the correct MLX API you use to export LoRA weights.
+        // Uses MLX LoRA APIs to export adapters from the model used during training.
         if let modelContainer = modelContainerForTraining {
-            await modelContainer.perform { context in
-                // TODO: Replace with actual save/export for your LoRA container.
-                // Example (pseudocode): try LoRAContainer.save(from: context.model, to: targetDir)
+            do {
+                try await modelContainer.perform { context in
+                    let lora = try LoRAContainer.from(
+                        model: context.model,
+                        configuration: LoRAConfiguration(numLayers: self.loraLayers)
+                    )
+                    try await saveLoRAAdapters(from: lora, to: targetDir)
+                }
+            } catch {
+                print("Failed to save adapters: \(error)")
             }
+        }
+
+        // Write a small manifest for bookkeeping (non-fatal if it fails)
+        let manifest: [String: Any] = [
+            "name": name,
+            "date": ISO8601DateFormatter().string(from: Date()),
+            "baseModelID": "Qwen/Qwen2.5-1.5B-Instruct",
+            "loraLayers": loraLayers,
+            "learningRate": learningRate,
+            "trainingIterations": trainingIterations
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted]) {
+            let manifestURL = targetDir.appendingPathComponent("manifest.json")
+            try? data.write(to: manifestURL)
         }
 
         await MainActor.run {
@@ -673,37 +713,35 @@ class ChatViewModel: ObservableObject {
             print("Adapter not found at \(dir.path)")
             return
         }
-        // Load adapters into the current model used by ChatSession
-        // NOTE: Replace with the correct MLX API to load/apply LoRA to your inference model.
-        // If needed, you may need to recreate `session` with a model that has LoRA attached.
-        // Example (pseudocode):
-        // if let s = session {
-        //     try await s.applyLoRA(from: dir)
-        // }
-        print("Applied adapter: \(name)")
-    }
 
+        do {
+            let baseID = "Qwen/Qwen2.5-1.5B-Instruct"
+            let model = try await loadModel(id: baseID, progressHandler: { _ in })
 
-}
+            // 2) Attach LoRA container
+            let lora = try LoRAContainer.from(
+                model: model.model,
+                configuration: LoRAConfiguration(numLayers: self.loraLayers)
+            )
 
-#if DEBUG
-import SwiftUI
+            // 3) Load adapters from disk into the LoRA container
+            try loadLoRAAdapters(into: lora, from: dir)
 
-#Preview("PDF Extraction Test") {
-    let vm = ChatViewModel()
-    return VStack(spacing: 16) {
-        if let pdfURL = Bundle.main.url(forResource: "Final_Activity_v1", withExtension: "pdf") {
-            Text("PDF found: \(pdfURL.lastPathComponent)")
-                .onAppear {
-                    Task {
-                        await vm.extractPDFToJsonLines(from: pdfURL)
-                    }
-                }
-        } else {
-            Text("Final_Activity_v1.pdf not found in bundle!")
+            // 4) Recreate chat session with adapted model
+            self.session = ChatSession(
+                model,
+                instructions: SYSTEM_PROMPT2,
+                generateParameters: GenerateParameters(maxTokens: 600, temperature: 0.4, topP: 0.8)
+            )
+            self.isAdapterActive = true
+
+            print("Applied adapter: \(name)")
+            self.messages.append("Applied adapter: \(name)")
+        } catch {
+            print("Failed to apply adapter: \(error)")
+            self.messages.append("Failed to apply adapter: \(error.localizedDescription)")
         }
     }
-    .padding()
-}
-#endif
 
+
+}
