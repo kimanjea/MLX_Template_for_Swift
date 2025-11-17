@@ -33,12 +33,20 @@ class ChatViewModel: ObservableObject {
     @Published var prompt = ""
     @Published var messages: [String] = []
     @Published private(set) var isReady = true
+    @Published private(set) var currentModelID: String = "ShukraJaliya/BLUECOMPUTER.2"
     @Published var isModelLoading: Bool = true
     @Published var isEmbedModelLoading: Bool = true
     @Published var modelLoadProgress: Progress? = nil
     @Published var embedModelProgress: Progress? = nil
     @Published var embedderModel: MLXEmbedders.ModelContainer?
-    @Published var MinEmbedderModel: MLXEmbedders.ModelContainer?
+    
+    // New: keep references to cancel ongoing work
+    private var modelLoadTask: Task<Void, Never>?
+    private var embedderLoadTask: Task<Void, Never>?
+    
+    /// If nil, we fall back to Final_Activity_v1.pdf in the app bundle
+    @Published var currentRAGPDFURL: URL? = nil
+    
     private var session: ChatSession?
     
     
@@ -50,18 +58,12 @@ class ChatViewModel: ObservableObject {
             let embedProgress = Progress(totalUnitCount: 100)
             self.modelLoadProgress = progress
             self.embedModelProgress = embedProgress
-            do {
-                let model = try await loadModel(id: "ShukraJaliya/BLUECOMPUTER.2", progressHandler: { [weak self] prog in
-                    Task { @MainActor in
-                        self?.modelLoadProgress = prog
-                    }
-                })
-                self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters(maxTokens: 600, temperature: 0.4, topP: 0.8))
-            } catch {
-                print("Model loading failed: \(error)")
-            }
             
-            self.isModelLoading = false
+            // 1) Initial model load (cancelable)
+            modelLoadTask?.cancel()
+            modelLoadTask = Task { [currentModelID] in
+                await performModelLoad(for: currentModelID)
+            }
             
             do {
                 let modelContainer = try await MLXEmbedders.loadModelContainer(configuration: ModelConfiguration.minilm_l6,  progressHandler: { [weak self] prog in
@@ -78,6 +80,45 @@ class ChatViewModel: ObservableObject {
             
             self.isEmbedModelLoading = false
             
+        }
+    }
+    
+    private func performModelLoad(for modelID: String) async {
+        // Reset state on main actor (we're already @MainActor)
+        isModelLoading = true
+        isReady = false
+        modelLoadProgress = Progress(totalUnitCount: 100)
+
+        do {
+            let model = try await loadModel(id: modelID, progressHandler: { [weak self] prog in
+                Task { @MainActor in
+                    self?.modelLoadProgress = prog
+                }
+            })
+            
+            if Task.isCancelled { return }
+
+            self.session = ChatSession(model, instructions: SYSTEM_PROMPT, generateParameters: GenerateParameters(maxTokens: 600, temperature: 0.4, topP: 0.8))
+        } catch {
+            if Task.isCancelled { return }
+            print("Model loading failed: \(error)")
+        }
+
+        // Finalize state (only if still relevant)
+        if !Task.isCancelled {
+            isModelLoading = false
+            isReady = true
+        }
+    }
+    
+    func selectModel(_ modelID: String) {
+        // Avoid reloading the same model
+        guard modelID != currentModelID else { return }
+        currentModelID = modelID
+
+        modelLoadTask?.cancel()
+        modelLoadTask = Task { [modelID] in
+            await performModelLoad(for: modelID)
         }
     }
     
@@ -226,12 +267,7 @@ class ChatViewModel: ObservableObject {
     
     
     let SYSTEM_PROMPT = """
-       You are an expert who only teaches data activism and Python programming to K–12 students. 
-           You explain concepts step by step using clear, scaffolded language. 
-           You never provide exact code solutions. 
-           If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. 
-           For general programming questions (like "How to create a function?"), give a full explanation with a short example, but do not solve specific problems.  
-           If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
+       You are an expert who explains concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject."
        """
     
     func send() {

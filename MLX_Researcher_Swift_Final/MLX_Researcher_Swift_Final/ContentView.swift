@@ -46,10 +46,11 @@ struct ChatUISession: Identifiable {
 
 struct ContentView: View {
     @StateObject private var vm = ChatViewModel()
-    @State private var selectedModel: String = "Gemma"
+    @State private var selectedModel: String = "ShukraJaliya/BLUECOMPUTER.2"
+    // 2. Replace single session ID with multi-session state:
     @State private var ChatUISessions: [ChatUISession] = []
     @State private var selectedSessionID: UUID? = nil
-    @State private var historyFilterModel: String = "Gemma"
+    @State private var historyFilterModel: String = "ShukraJaliya/BLUECOMPUTER.2"
     
     @State private var thinkingStartDate: Date? = nil
     @State private var thinkingElapsed: Int = 0
@@ -61,8 +62,8 @@ struct ContentView: View {
     
     private let suggestedQuestions = [
         "What is data activism?",
-        "What is a variable?",
-        "What is Python?",
+        "What is environmental awareness?",
+        "What is artificial intelligence?",
         "What is a function?",
         "Examples of Data Activism"
     ]
@@ -167,6 +168,8 @@ struct ContentView: View {
             }
             vm.messages = session.messages
             selectedModel = session.model
+            
+            vm.selectModel(selectedModel)
         }
         .onChange(of: vm.isReady) { newValue in
             if !newValue {
@@ -204,12 +207,16 @@ struct ContentView: View {
             }
             
             Picker("Model", selection: boundModel) {
-                Text("Gemma").tag("Gemma")
-                Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
-                Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
+                Text("Qwen/Qwen3-VL-2B-Instruct").tag("Qwen/Qwen3-VL-2B-Instruct")
+                Text("ShukraJaliya/BLUECOMPUTER.2").tag("ShukraJaliya/BLUECOMPUTER.2")
+                Text("Qwen/Qwen2.5-1.5B-Instruct").tag("Qwen/Qwen2.5-1.5B-Instruct")
             }
             .pickerStyle(.menu)
             .frame(maxWidth: 200)
+            
+            .onChange(of: boundModel.wrappedValue) { newModelID in
+                vm.selectModel(newModelID)
+            }
             
             Spacer()
         }
@@ -644,9 +651,9 @@ struct ContentView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 30))
                     
                     Picker("Model", selection: $historyFilterModel) {
-                        Text("Gemma").tag("Gemma")
-                        Text("BLUECOMPUTER.2").tag("BLUECOMPUTER.2")
-                        Text("ChatGPT-4o-Mini").tag("ChatGPT-4o-Mini")
+                        Text("Qwen/Qwen3-VL-2B-Instruct").tag("Qwen/Qwen3-VL-2B-Instruct")
+                        Text("ShukraJaliya/BLUECOMPUTER.2").tag("ShukraJaliya/BLUECOMPUTER.2")
+                        Text("Qwen/Qwen2.5-1.5B-Instruct").tag("Qwen/Qwen2.5-1.5B-Instruct")
                     }
                     .pickerStyle(.segmented)
                 }
