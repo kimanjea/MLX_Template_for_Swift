@@ -387,7 +387,7 @@ class ChatViewModel: ObservableObject {
                             self.finalContext = ""
 
                             prompt = """
-                                     <|im_start|>system \(SYSTEM_PROMPT). If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>
+                                     <|im_start|>system \(SYSTEM_PROMPT).<|im_end|>
                                      <|im_start|>user \(question)<|im_end|>
                                      <|im_start|>assistant
                                      """
