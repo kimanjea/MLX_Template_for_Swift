@@ -296,16 +296,24 @@ class ChatViewModel: ObservableObject {
         return zip(a, b).map(*).reduce(0, +)
     }
     
-    
-    let SYSTEM_PROMPT = """
-       You are an expert who only teaches data activism and Python programming to K–12 students. 
-           You explain concepts step by step using clear, scaffolded language. 
-           You never provide exact code solutions. 
-           If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. 
-           For general programming questions (like "How to create a function?"), give a full explanation with a short example, but do not solve specific problems.  
-           If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
+    let SYSTEM_PROMPT2 = """
+       You are an expert who teaches concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject."
        """
     
+    let SYSTEM_PROMPT = """
+                You are an expert who only teaches data activism and Python programming to K–12 students. 
+                You explain concepts step by step using clear, scaffolded language. 
+                You never provide exact code solutions. 
+                If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. 
+                For general programming questions (like "How to create a function?"), give a full explanation with a short example, but do not solve specific problems.  
+                If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
+                """
+    
+    /// Minimal helper: just remember which file to use for RAG
+    func setRAGPDF(url: URL) {
+        currentRAGPDFURL = url
+        print("RAG PDF set to: \(url.path)")
+    }
     
     func send() {
         guard let session = self.session, !self.input.isEmpty else { return }
@@ -332,7 +340,7 @@ class ChatViewModel: ObservableObject {
                     self.finalContext = topChunks.first ?? ""
 
                     prompt = """
-                    <|im_start|>system \(SYSTEM_PROMPT) <|im_end|>
+                    <|im_start|>system \(SYSTEM_PROMPT2) <|im_end|>
                     <|im_start|>user 
                     Question: \(question)
 
@@ -411,11 +419,6 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    
-    
-    let SYSTEM_PROMPT2 = """
-       You are an expert who teaches concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks about something not supported by the uploaded PDF(s), respond that you can only answer questions about the content and gently redirect them to that material."
-       """
 
     
     // Updated method with requested changes:
@@ -527,10 +530,6 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    func setRAGPDF(url: URL) {
-        currentRAGPDFURL = url
-    }
-
 
     // MARK: - Training Orchestration
     func trainFromCurrentPDF() {

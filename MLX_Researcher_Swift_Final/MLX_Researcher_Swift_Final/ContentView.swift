@@ -42,6 +42,7 @@ struct ChatUISession: Identifiable {
     var model: String
     var messages: [String]
     let created: Date
+    var alias: String
 }
 
 struct ModelOption {
@@ -51,8 +52,7 @@ struct ModelOption {
 
 // Map backend IDs to user-friendly names
 let modelOptions: [ModelOption] = [
-    ModelOption(id: "Qwen/Qwen3-VL-2B-Instruct", name: "General Course1"),
-    ModelOption(id: "Qwen/Qwen2.5-1.5B-Instruct", name: "General Course2"),
+    ModelOption(id: "ShukraJaliya/general", name: "General Course1"),
     ModelOption(id: "ShukraJaliya/BLUECOMPUTER.2", name: "Data Activism")
 ]
 
@@ -68,6 +68,7 @@ struct ContentView: View {
     @State private var ChatUISessions: [ChatUISession] = []
     @State private var selectedSessionID: UUID? = nil
     @State private var historyFilterModel: String = "ShukraJaliya/BLUECOMPUTER.2"
+    @State private var historyFilterAlias: String = ""
     
     @State private var thinkingStartDate: Date? = nil
     @State private var thinkingElapsed: Int = 0
@@ -78,7 +79,10 @@ struct ContentView: View {
     @State private var showPDFImporter = false
     @State private var selectedPDFName: String? = nil
     @State private var isDropTargeted: Bool = false
-    
+    @State private var newCourseName: String = ""
+    @State private var customModelOptions: [ModelOption] = []
+    @State private var selectedCourseKey: String = ""
+
     private let suggestedQuestions = [
         "What is data activism?",
         "What is environmental awareness?",
@@ -127,6 +131,19 @@ struct ContentView: View {
             .sorted { $0.key < $1.key }
     }
     
+    // Combine built-in options with user-defined aliases
+    private var allModelOptions: [ModelOption] {
+        modelOptions + customModelOptions
+    }
+    
+    // Prefer a user-defined alias for a given model id; fall back to built-in name
+    private func displayNameFor(_ id: String) -> String {
+        if let alias = customModelOptions.first(where: { $0.id == id })?.name {
+            return alias
+        }
+        return nameFor(id)
+    }
+    
     var body: some View {
         TabView {
             NavigationStack {
@@ -149,12 +166,6 @@ struct ContentView: View {
                     Label("History", systemImage: "clock")
                 }
             
-            NavigationStack {
-                uploadCourseView
-            }
-            .tabItem {
-                Label("Upload Course", systemImage: "doc.badge.plus")
-            }
             
             NavigationStack {
                 settingsView
@@ -171,12 +182,14 @@ struct ContentView: View {
                     id: UUID(),
                     model: selectedModel,
                     messages: [],
-                    created: Date()
+                    created: Date(),
+                    alias: selectedCourseKey.isEmpty ? displayNameFor(selectedModel) : selectedCourseKey
                 )
                 ChatUISessions.insert(newSession, at: 0)
                 selectedSessionID = newSession.id
                 vm.messages = []
                 vm.input = ""
+                selectedCourseKey = newSession.alias
             }
         }
         .onChange(of: selectedSessionID) { newValue in
@@ -188,6 +201,7 @@ struct ContentView: View {
             }
             vm.messages = session.messages
             selectedModel = session.model
+            selectedCourseKey = session.alias
             
             vm.selectModel(selectedModel)
         }
@@ -225,6 +239,13 @@ struct ContentView: View {
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
+            Picker(selectedCourseKey.isEmpty ? displayNameFor(boundModel.wrappedValue) : selectedCourseKey, selection: $selectedCourseKey) {
+                ForEach(Array(allModelOptions.enumerated()), id: \.offset) { _, option in
+                            // Use the visible name as a unique selection key
+                    Text(option.name).tag(option.name)
+                }
+            }
+
             
             Picker("Model", selection: boundModel) {
                 // Saved adapters with delete context menu
@@ -238,9 +259,6 @@ struct ContentView: View {
                                 Label("Delete Adapter", systemImage: "trash")
                             }
                         }
-                }
-                ForEach(modelOptions, id: \.id) { option in
-                    Text(option.name).tag(option.id)
                 }
             }
             .pickerStyle(.menu)
@@ -258,6 +276,130 @@ struct ContentView: View {
         }
         .padding()
         .navigationTitle("Course Selection")
+    }
+    
+    // MARK: - Compact Course Uploader (for side-by-side in Model Picker)
+    private var courseUploaderMiniView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Upload Course PDF")
+                .font(.headline)
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isDropTargeted ? Color.blue.opacity(0.15) : Color.gray.opacity(0.12))
+                    .frame(height: 160)
+                    .overlay {
+                        VStack(spacing: 8) {
+                            if let name = selectedPDFName {
+                                Text(name)
+                                    .font(.subheadline)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .padding(.horizontal, 12)
+                            } else {
+                                Image(systemName: "arrow.up.doc")
+                                    .font(.system(size: 36, weight: .regular))
+                                    .foregroundColor(.secondary)
+                                Text("Upload PDF")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        showPDFImporter = true
+                    }
+                    .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
+                        guard let provider = providers.first else { return false }
+                        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier,
+                                          options: nil) { item, error in
+                            if let error = error {
+                                print("Drop error: \(error.localizedDescription)")
+                                return
+                            }
+                            if let data = item as? Data,
+                               let url = URL(dataRepresentation: data, relativeTo: nil) {
+                                Task { @MainActor in
+                                    vm.setRAGPDF(url: url)
+                                    selectedPDFName = url.lastPathComponent
+                                    print("Drop: using file \(url.path)")
+                                }
+                            } else if let url = item as? URL {
+                                Task { @MainActor in
+                                    vm.setRAGPDF(url: url)
+                                    selectedPDFName = url.lastPathComponent
+                                    print("Drop: using file \(url.path)")
+                                }
+                            } else {
+                                print("Drop: unsupported item \(String(describing: item))")
+                            }
+                        }
+                        return true
+                    }
+            }
+            TextField("Course name (alias)", text: $newCourseName)
+                .textFieldStyle(.roundedBorder)
+            
+            Button("Save") {
+                let fixedID = "ShukraJaliya/general"
+                let trimmed = newCourseName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+
+                // Only add if an identical alias for the same fixed id does not already exist
+                if !customModelOptions.contains(where: { $0.id == fixedID && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+                    customModelOptions.append(ModelOption(id: fixedID, name: trimmed))
+                }
+
+                // Select the fixed model id and trigger model selection if needed
+                if boundModel.wrappedValue != fixedID {
+                    boundModel.wrappedValue = fixedID
+                    vm.selectModel(fixedID)
+                }
+                // Keep the picker title in sync with the new alias
+                selectedCourseKey = trimmed
+                
+                let newSession = ChatUISession(
+                    id: UUID(),
+                    model: selectedModel,
+                    messages: [],
+                    created: Date(),
+                    alias: trimmed
+                )
+                
+                ChatUISessions.insert(newSession, at: 0)
+                selectedSessionID = newSession.id
+                vm.messages = []
+                vm.input = ""
+                selectedCourseKey = newSession.alias
+
+                // Clear the field after saving
+                newCourseName = ""
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(newCourseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Text("Drag & drop or tap to select a PDF. It will be used for RAG.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .fileImporter(isPresented: $showPDFImporter,
+                      allowedContentTypes: [.pdf],
+                      allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    Task { @MainActor in
+                        vm.setRAGPDF(url: url)
+                        selectedPDFName = url.lastPathComponent
+                        print("Picker: using file \(url.path)")
+                    }
+                }
+            case .failure(let error):
+                print("fileImporter error: \(error.localizedDescription)")
+            }
+        }
     }
     
     private var modelLoadingOverlay: some View {
@@ -388,7 +530,8 @@ struct ContentView: View {
                         id: UUID(),
                         model: selectedModel,
                         messages: [],
-                        created: Date()
+                        created: Date(),
+                        alias: selectedCourseKey.isEmpty ? displayNameFor(selectedModel) : selectedCourseKey
                     )
                     ChatUISessions.insert(newSession, at: 0)
                     selectedSessionID = newSession.id
@@ -402,7 +545,7 @@ struct ContentView: View {
             }
             .padding([.top, .horizontal])
             
-            Text("Active course: \(nameFor(selectedModel))")
+            Text("Active course: \((ChatUISessions.first(where: { $0.id == selectedSessionID })?.alias) ?? (selectedCourseKey.isEmpty ? displayNameFor(selectedModel) : selectedCourseKey))")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .padding(.horizontal)
@@ -791,7 +934,8 @@ struct ContentView: View {
                             id: UUID(),
                             model: selectedModel,
                             messages: [],
-                            created: Date()
+                            created: Date(),
+                            alias: selectedCourseKey.isEmpty ? displayNameFor(selectedModel) : selectedCourseKey
                         )
                         ChatUISessions.insert(newSession, at: 0)
                         selectedSessionID = newSession.id
@@ -810,6 +954,14 @@ struct ContentView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+
+                    Picker("Alias", selection: $historyFilterAlias) {
+                        Text("All Aliases").tag("")
+                        ForEach(Array(Set(ChatUISessions.map { $0.alias })).sorted(), id: \.self) { alias in
+                            Text(alias).tag(alias)
+                        }
+                    }
+                    .pickerStyle(.menu)
                 }
                 .padding([.top, .horizontal])
                 
@@ -823,6 +975,38 @@ struct ContentView: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Conversation \(session.id.uuidString.prefix(5))")
+                                        .font(.headline)
+                                    if let lastMessage = session.messages.last {
+                                        Text(lastMessage)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                    } else {
+                                        Text("No messages yet")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Text(session.created, style: .relative)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
+                Section(header: Text(historyFilterAlias.isEmpty ? "By Alias" : historyFilterAlias)) {
+                    ForEach(ChatUISessions.filter { historyFilterAlias.isEmpty ? true : $0.alias == historyFilterAlias }.prefix(5)) { session in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Button {
+                                selectedSessionID = session.id
+                                vm.messages = session.messages
+                                selectedModel = session.model
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(session.alias)
                                         .font(.headline)
                                     if let lastMessage = session.messages.last {
                                         Text(lastMessage)
