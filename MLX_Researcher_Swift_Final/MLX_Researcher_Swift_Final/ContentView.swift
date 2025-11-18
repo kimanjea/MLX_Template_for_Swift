@@ -51,8 +51,7 @@ struct ModelOption {
 
 // Map backend IDs to user-friendly names
 let modelOptions: [ModelOption] = [
-    ModelOption(id: "Qwen/Qwen3-VL-2B-Instruct", name: "General Course1"),
-    ModelOption(id: "Qwen/Qwen2.5-1.5B-Instruct", name: "General Course2"),
+    ModelOption(id: "Qwen/Qwen2.5-1.5B-Instruct", name: "General Course1"),
     ModelOption(id: "ShukraJaliya/BLUECOMPUTER.2", name: "Data Activism")
 ]
 
@@ -76,7 +75,10 @@ struct ContentView: View {
     @State private var showPDFImporter = false
     @State private var selectedPDFName: String? = nil
     @State private var isDropTargeted: Bool = false
-    
+    @State private var newCourseName: String = ""
+    @State private var customModelOptions: [ModelOption] = []
+    @State private var selectedCourseKey: String = ""
+
     private let suggestedQuestions = [
         "What is data activism?",
         "What is environmental awareness?",
@@ -125,6 +127,19 @@ struct ContentView: View {
             .sorted { $0.key < $1.key }
     }
     
+    // Combine built-in options with user-defined aliases
+    private var allModelOptions: [ModelOption] {
+        modelOptions + customModelOptions
+    }
+    
+    // Prefer a user-defined alias for a given model id; fall back to built-in name
+    private func displayNameFor(_ id: String) -> String {
+        if let alias = customModelOptions.first(where: { $0.id == id })?.name {
+            return alias
+        }
+        return nameFor(id)
+    }
+    
     var body: some View {
         TabView {
             NavigationStack {
@@ -147,12 +162,6 @@ struct ContentView: View {
                     Label("History", systemImage: "clock")
                 }
             
-            NavigationStack {
-                uploadCourseView
-            }
-            .tabItem {
-                Label("Upload Course", systemImage: "doc.badge.plus")
-            }
             
             NavigationStack {
                 settingsView
@@ -174,6 +183,7 @@ struct ContentView: View {
                 selectedSessionID = newSession.id
                 vm.messages = []
                 vm.input = ""
+                selectedCourseKey = displayNameFor(selectedModel)
             }
         }
         .onChange(of: selectedSessionID) { newValue in
@@ -185,6 +195,7 @@ struct ContentView: View {
             }
             vm.messages = session.messages
             selectedModel = session.model
+            selectedCourseKey = displayNameFor(selectedModel)
             
             vm.selectModel(selectedModel)
         }
@@ -209,36 +220,174 @@ struct ContentView: View {
                 .frame(width: 100, height: 100)
                 .shadow(radius: 8)
             
-            Image(systemName: "cpu")
-                .font(.system(size: 50))
-                .foregroundStyle(.blue.gradient)
-            
-            VStack(spacing: 8) {
-                Text("Select course")
-                    .font(.title2.bold())
-                
-                Text("Choose an AI model for your conversation")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            
-            Picker("Model", selection: boundModel) {
-                ForEach(modelOptions, id: \.id) { option in
-                    Text(option.name).tag(option.id)
+            HStack(alignment: .top, spacing: 24) {
+                // Left: existing model selection UI
+                VStack(spacing: 16) {
+                    Image(systemName: "cpu")
+                        .font(.system(size: 50))
+                        .foregroundStyle(.blue.gradient)
+
+                    VStack(spacing: 8) {
+                        Text("Select course")
+                            .font(.title2.bold())
+                        Text("Choose a course for your conversation")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    Picker(selectedCourseKey.isEmpty ? displayNameFor(boundModel.wrappedValue) : selectedCourseKey, selection: $selectedCourseKey) {
+                        ForEach(Array(allModelOptions.enumerated()), id: \.offset) { _, option in
+                            // Use the visible name as a unique selection key
+                            Text(option.name).tag(option.name)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 200)
+                    .onChange(of: selectedCourseKey) { newKey in
+                        if let chosen = allModelOptions.first(where: { $0.name == newKey }) {
+                            let id = chosen.id
+                            if boundModel.wrappedValue != id {
+                                boundModel.wrappedValue = id
+                                vm.selectModel(id)
+                            }
+                        }
+                    }
                 }
-            }
-            .pickerStyle(.menu)
-            .frame(maxWidth: 200)
-            
-            .onChange(of: boundModel.wrappedValue) { newModelID in
-                vm.selectModel(newModelID)
+                .frame(maxWidth: .infinity, alignment: .top)
+
+                // Right: compact uploader view
+                courseUploaderMiniView
+                    .frame(maxWidth: 360)
             }
             
             Spacer()
         }
         .padding()
         .navigationTitle("Course Selection")
+    }
+    
+    // MARK: - Compact Course Uploader (for side-by-side in Model Picker)
+    private var courseUploaderMiniView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Upload Course PDF")
+                .font(.headline)
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isDropTargeted ? Color.blue.opacity(0.15) : Color.gray.opacity(0.12))
+                    .frame(height: 160)
+                    .overlay {
+                        VStack(spacing: 8) {
+                            if let name = selectedPDFName {
+                                Text(name)
+                                    .font(.subheadline)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .padding(.horizontal, 12)
+                            } else {
+                                Image(systemName: "arrow.up.doc")
+                                    .font(.system(size: 36, weight: .regular))
+                                    .foregroundColor(.secondary)
+                                Text("Upload PDF")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        showPDFImporter = true
+                    }
+                    .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
+                        guard let provider = providers.first else { return false }
+                        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier,
+                                          options: nil) { item, error in
+                            if let error = error {
+                                print("Drop error: \(error.localizedDescription)")
+                                return
+                            }
+                            if let data = item as? Data,
+                               let url = URL(dataRepresentation: data, relativeTo: nil) {
+                                Task { @MainActor in
+                                    vm.setRAGPDF(url: url)
+                                    selectedPDFName = url.lastPathComponent
+                                    print("Drop: using file \(url.path)")
+                                }
+                            } else if let url = item as? URL {
+                                Task { @MainActor in
+                                    vm.setRAGPDF(url: url)
+                                    selectedPDFName = url.lastPathComponent
+                                    print("Drop: using file \(url.path)")
+                                }
+                            } else {
+                                print("Drop: unsupported item \(String(describing: item))")
+                            }
+                        }
+                        return true
+                    }
+            }
+            TextField("Course name (alias)", text: $newCourseName)
+                .textFieldStyle(.roundedBorder)
+            
+            Button("Save") {
+                let fixedID = "ShukraJaliya/general"
+                let trimmed = newCourseName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+
+                // Only add if an identical alias for the same fixed id does not already exist
+                if !customModelOptions.contains(where: { $0.id == fixedID && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+                    customModelOptions.append(ModelOption(id: fixedID, name: trimmed))
+                }
+
+                // Select the fixed model id and trigger model selection if needed
+                if boundModel.wrappedValue != fixedID {
+                    boundModel.wrappedValue = fixedID
+                    vm.selectModel(fixedID)
+                }
+                // Keep the picker title in sync with the new alias
+                selectedCourseKey = trimmed
+                
+                let newSession = ChatUISession(
+                    id: UUID(),
+                    model: selectedModel,
+                    messages: [],
+                    created: Date()
+                )
+                
+                ChatUISessions.insert(newSession, at: 0)
+                selectedSessionID = newSession.id
+                vm.messages = []
+                vm.input = ""
+                selectedCourseKey = displayNameFor(selectedModel)
+
+                // Clear the field after saving
+                newCourseName = ""
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(newCourseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Text("Drag & drop or tap to select a PDF. It will be used for RAG.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .fileImporter(isPresented: $showPDFImporter,
+                      allowedContentTypes: [.pdf],
+                      allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    Task { @MainActor in
+                        vm.setRAGPDF(url: url)
+                        selectedPDFName = url.lastPathComponent
+                        print("Picker: using file \(url.path)")
+                    }
+                }
+            case .failure(let error):
+                print("fileImporter error: \(error.localizedDescription)")
+            }
+        }
     }
     
     private var modelLoadingOverlay: some View {
@@ -383,7 +532,7 @@ struct ContentView: View {
             }
             .padding([.top, .horizontal])
             
-            Text("Active course: \(nameFor(selectedModel))")
+            Text("Active course: \(displayNameFor(selectedModel))")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .padding(.horizontal)
@@ -555,100 +704,6 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Upload Course View (simplest drop + picker)
-    private var uploadCourseView: some View {
-        GeometryReader { geo in
-            let side = max(
-                220.0,
-                min(min(geo.size.width, geo.size.height) * 0.35, 420.0)
-            )
-            
-            ZStack {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(isDropTargeted ? Color.blue.opacity(0.2) : Color.gray.opacity(0.15))
-                    .frame(width: side, height: side)
-                    .overlay {
-                        VStack(spacing: 10) {
-                            if let name = selectedPDFName {
-                                Text(name)
-                                    .font(.headline)
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(2)
-                                    .padding(.horizontal, 16)
-                            } else {
-                                Image(systemName: "arrow.up.doc")
-                                    .font(.system(size: 48, weight: .regular))
-                                    .foregroundColor(.secondary)
-                                Text("Upload PDF")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding()
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        showPDFImporter = true
-                    }
-                    .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
-                        guard let provider = providers.first else { return false }
-
-                        // Ask for a file URL from the drag
-                        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier,
-                                          options: nil) { item, error in
-                            if let error = error {
-                                print("Drop error: \(error.localizedDescription)")
-                                return
-                            }
-
-                            // Finder usually gives us the URL wrapped in Data
-                            if let data = item as? Data,
-                               let url = URL(dataRepresentation: data, relativeTo: nil) {
-
-                                Task { @MainActor in
-                                    // 1) Tell RAG to use this file
-                                    vm.setRAGPDF(url: url)
-                                    // 2) Update the label
-                                    selectedPDFName = url.lastPathComponent
-                                    print("Drop: using file \(url.path)")
-                                }
-
-                            } else if let url = item as? URL {
-                                // Fallback if we ever get a plain URL
-                                Task { @MainActor in
-                                    vm.setRAGPDF(url: url)
-                                    selectedPDFName = url.lastPathComponent
-                                    print("Drop: using file \(url.path)")
-                                }
-                            } else {
-                                print("Drop: unsupported item \(String(describing: item))")
-                            }
-                        }
-
-                        return true
-                    }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .padding()
-        .navigationTitle("PDF insertion")
-        .fileImporter(isPresented: $showPDFImporter,
-                      allowedContentTypes: [.pdf],
-                      allowsMultipleSelection: false) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    Task { @MainActor in
-                        vm.setRAGPDF(url: url)
-                        selectedPDFName = url.lastPathComponent
-                        print("Picker: using file \(url.path)")
-                    }
-                }
-            case .failure(let error):
-                print("fileImporter error: \(error.localizedDescription)")
-            }
-        }
-    }
     
     // MARK: - History View
     private var historyView: some View {
