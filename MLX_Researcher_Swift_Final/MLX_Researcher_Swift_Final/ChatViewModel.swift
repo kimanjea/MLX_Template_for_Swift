@@ -304,7 +304,6 @@ class ChatViewModel: ObservableObject {
     
     
     func send() {
-        
         guard let session = self.session, !self.input.isEmpty else { return }
         let question = self.input
         self.messages.append("You: \(question)")
@@ -314,73 +313,99 @@ class ChatViewModel: ObservableObject {
         Task { @MainActor in
             let start = Date()
             do {
-                
-                if let topic = classifyTopic(for: question) {
-                    print("Predicted topic: \(topic)")
+                if self.currentModelID != "ShukraJaliya/BLUECOMPUTER.2" {
                     
-                    let isCodingScaffold = question.contains("?") && (question.contains("def") || question.contains(":"))
-                    
-                    if topic == "1" && !isAdapterActive {
-                        
-                        if isCodingScaffold {
-                            self.finalContext = ""
-                            prompt = """
-                            <|im_start|>system \((isAdapterActive ? SYSTEM_PROMPT2 : SYSTEM_PROMPT))<|im_end|>
-                            <|im_start|>user \(question)<|im_end|>
-                            <|im_start|>assistant
-                            """
-                        } else {
-                            let chunks = textChunker(for: question)
-                            let chunkEmbeddings = try await embedChunks(chunks)
-                            var topChunks = try await retrieveContext(
-                                question: question,
-                                chunks: chunks,
-                                chunkEmbeddings: chunkEmbeddings,
-                                topK: 1 // Change to more for more context
-                            )
-                            
-                            self.finalContext = topChunks.first ?? ""
-                            
-                            prompt = """
-                            <|im_start|>system \((isAdapterActive ? SYSTEM_PROMPT2 : SYSTEM_PROMPT))<|im_end|>
-                            <|im_start|>user 
-                            Question: \(question)
+                    // Skip classification
+                    let chunks = textChunker(for: question)
+                    let chunkEmbeddings = try await embedChunks(chunks)
+                    var topChunks = try await retrieveContext(
+                        question: question,
+                        chunks: chunks,
+                        chunkEmbeddings: chunkEmbeddings,
+                        topK: 1 // Change to more for more context
+                    )
 
-                            background information (for your reference if relevant, do not quote directly unless needed): 
-                            \(self.finalContext)
-                            ---
-                            Please answer in your own words, explaining concepts clearly for a K–12 student. <|im_end|>
-                            <|im_start|>assistant
-                            """
+                    self.finalContext = topChunks.first ?? ""
+
+                    prompt = """
+                    <|im_start|>system \(SYSTEM_PROMPT) <|im_end|>
+                    <|im_start|>user 
+                    Question: \(question)
+
+                    background information (for your reference if relevant, do not quote directly unless needed): 
+                    \(self.finalContext)
+                    ---
+                    Please answer in your own words, explaining concepts clearly for a K–12 student. <|im_end|>
+                    <|im_start|>assistant
+                    """
+                    
+                } else {
+                    if let topic = classifyTopic(for: question) {
+                        print("Predicted topic: \(topic)")
+
+                        let isCodingScaffold = question.contains("?") && (question.contains("def") || question.contains(":"))
+
+                        if topic == "1" {
+
+                            if isCodingScaffold {
+                                self.finalContext = ""
+                                prompt = """
+                                <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
+                                <|im_start|>user \(question)<|im_end|>
+                                <|im_start|>assistant
+                                """
+                            } else {
+                                let chunks = textChunker(for: question)
+                                let chunkEmbeddings = try await embedChunks(chunks)
+                                var topChunks = try await retrieveContext(
+                                    question: question,
+                                    chunks: chunks,
+                                    chunkEmbeddings: chunkEmbeddings,
+                                    topK: 1 // Change to more for more context
+                                )
+
+                                self.finalContext = topChunks.first ?? ""
+
+                                prompt = """
+                                <|im_start|>system \(SYSTEM_PROMPT) <|im_end|>
+                                <|im_start|>user 
+                                Question: \(question)
+
+                                background information (for your reference if relevant, do not quote directly unless needed): 
+                                \(self.finalContext)
+                                ---
+                                Please answer in your own words, explaining concepts clearly for a K–12 student. <|im_end|>
+                                <|im_start|>assistant
+                                """
+                            }
+
+                        } else {
+                            self.finalContext = ""
+
+                            prompt = """
+                                     <|im_start|>system \(SYSTEM_PROMPT). If the provided context is directly relevant, smoothly weave up to two supporting details from it into your explanation. Do not copy code or describe placeholder replacements unless the user pasted code with literal '?'.<|im_end|>
+                                     <|im_start|>user \(question)<|im_end|>
+                                     <|im_start|>assistant
+                                     """
                         }
-                        
-                    } else {
-                        
-                        self.finalContext = ""
-                        prompt = """
-                                 <|im_start|>system \((isAdapterActive ? SYSTEM_PROMPT2 : SYSTEM_PROMPT))<|im_end|>
-                                 <|im_start|>user \(question)<|im_end|>
-                                 <|im_start|>assistant
-                                 """
-                    }
+                    } 
                 }
                 
                 print("[Prompt sent to model]:\n\(prompt)")
                 
                 let userPrompt = prompt
-                
                 let reply = try await session.respond(to: userPrompt)
                 let elapsed = Date().timeIntervalSince(start)
-                self.messages.append("(\(String(format: "%.2f", elapsed))s): \(reply)")
+                let elapsedString = String(format: "%.2f", elapsed)
+                self.messages.append("(\(elapsedString)s): \(reply)")
             } catch {
                 let elapsed = Date().timeIntervalSince(start)
-                self.messages.append("Error (\(String(format: "%.2f", elapsed))s): \(error.localizedDescription)")
+                let elapsedString = String(format: "%.2f", elapsed)
+                self.messages.append("Error (\(elapsedString)s): \(error.localizedDescription)")
             }
             self.isReady = true
-            
         }
     }
-    
     
     
     
@@ -769,7 +794,5 @@ class ChatViewModel: ObservableObject {
             print("Failed to delete adapter '\(name)': \(error)")
         }
     }
-
-
-
 }
+
