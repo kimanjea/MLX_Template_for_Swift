@@ -385,7 +385,7 @@ class ChatViewModel: ObservableObject {
     
     
     let SYSTEM_PROMPT2 = """
-       You are an expert who explains concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject."
+       You are an expert who teaches concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks about something not supported by the uploaded PDF(s), respond that you can only answer questions about the content and gently redirect them to that material."
        """
 
     
@@ -432,7 +432,7 @@ class ChatViewModel: ObservableObject {
             let systemPrompt = SYSTEM_PROMPT2
             
             // 4. Use your repo directory, not sandbox
-            let documentsDir = URL(fileURLWithPath: "/Users/AVLA Student/Documents/GitHub/MLX_Template_for_Swift/MLX_Researcher_Swift_Final/MLX_Researcher_Swift_Final")
+            let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             print("Using directory:", documentsDir.path)
             let jsonlLines = lines.map { sentence -> String in
                 let dict = ["text": "Instruction: \(systemPrompt)\nAssistant: \(sentence)"]
@@ -527,7 +527,7 @@ class ChatViewModel: ObservableObject {
         await extractPDFToJsonLines(from: url)
 
         // 2) Determine the dataset URLs (must match extractPDFToJsonLines output)
-        let documentsDir = URL(fileURLWithPath: "/Users/AVLA Student/Documents/GitHub/MLX_Template_for_Swift/MLX_Researcher_Swift_Final/MLX_Researcher_Swift_Final")
+        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let trainURL = documentsDir.appendingPathComponent("train.jsonl")
         let validURL = documentsDir.appendingPathComponent("valid.jsonl")
         let testURL  = documentsDir.appendingPathComponent("test.jsonl")
@@ -715,7 +715,7 @@ class ChatViewModel: ObservableObject {
         }
 
         do {
-            let baseID = "Qwen/Qwen2.5-1.5B-Instruct"
+            let baseID = "ShukraJaliya/general"
             let model = try await loadModel(id: baseID, progressHandler: { _ in })
 
             // 2) Attach LoRA container
