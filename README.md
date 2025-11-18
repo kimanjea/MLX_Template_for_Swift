@@ -1,6 +1,6 @@
 # AVELA AI & XR LAB
 
-Key Collaborators: Shukra Jaliya Nankabirwa, Marquiese Garret, Kalkidan Maru, Elroe Yayiso, Laila Walker, Kalea Kamada, Brianna Smith, Evolone Layne
+Key Collaborators: Shukra Jaliya Nankabirwa, Faisal Nurdin, Marquiese Garret, Kalkidan Maru, Elroe Yayiso, Laila Walker, Kalea Kamada, Brianna Smith, Evolone Layne
 
 PI: Azhar Amir Kimanje, Vicente Arroyos, Kyle Johnson
 
