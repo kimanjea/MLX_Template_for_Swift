@@ -14,7 +14,6 @@ import CoreML
 import PDFKit
 import NaturalLanguage
 import Hub
-import NaturalLanguage
 
 struct ConversationExample: Codable {
     let system: String
@@ -44,8 +43,8 @@ class ChatViewModel: ObservableObject {
     
     @Published var isTraining: Bool = false
     @Published var trainingProgress: Double? = nil
-    @State private var showSaveAdapterSheet = false
-    @State private var newAdapterName: String = ""
+    @Published private var showSaveAdapterSheet = false
+    @Published private var newAdapterName: String = ""
     @Published var savedAdapters: [String] = []
     private let adaptersDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Adapters", isDirectory: true)
@@ -163,14 +162,20 @@ class ChatViewModel: ObservableObject {
     }
     
     private func textChunker(for question: String) -> [String] {
-        guard let pdfFile = Bundle.main.url(forResource: "Final_Activity_v1", withExtension: "pdf"),
-              let pdfDocument = PDFDocument(url: pdfFile) else {
+        // Prefer the user-selected PDF if available, otherwise fall back to the bundled PDF
+        let pdfURL: URL?
+        if let current = self.currentRAGPDFURL {
+            pdfURL = current
+        } else {
+            pdfURL = Bundle.main.url(forResource: "Final_Activity_v1", withExtension: "pdf")
+        }
+
+        guard let pdfURL, let pdfDocument = PDFDocument(url: pdfURL) else {
             print("PDF not found")
             return []
         }
-        
+
         var allText: [String] = []
-        
         // STEP 1: Extract text from each page
         for pageIndex in 0..<pdfDocument.pageCount {
             if let page = pdfDocument.page(at: pageIndex),
@@ -179,15 +184,14 @@ class ChatViewModel: ObservableObject {
                 allText.append(pageText)
             }
         }
-        
+
         // STEP 2: Use semanticChunker to split into meaningful chunks
         var chunks: [String] = []
-        
         for text in allText {
             let semanticChunks = semanticChunker(text: text)
             chunks.append(contentsOf: semanticChunks)
         }
-        
+
         return chunks
     }
     
@@ -416,12 +420,8 @@ class ChatViewModel: ObservableObject {
     
     // Updated method with requested changes:
     func extractPDFToJsonLines(from url: URL) async {
-        guard let uploadedURL = self.currentRAGPDFURL else {
-            print("No uploaded PDF set. Call setRAGPDF(url:) from the Upload Course view before extraction.")
-            return
-        }
-        // If a URL was passed that doesn't match the uploaded URL, ignore it and use the uploaded URL
-        let effectiveURL = uploadedURL
+        // Prefer the provided URL; if nil (shouldn't happen), fall back to the currentRAGPDFURL.
+        let effectiveURL = url
         
 
         do {
@@ -456,9 +456,15 @@ class ChatViewModel: ObservableObject {
             // 3. Plain system prompt string (no double-encoding)
             let systemPrompt = SYSTEM_PROMPT2
             
+<<<<<<< HEAD
             // 4. Use your repo directory, not sandbox
             let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             print("Using directory:", documentsDir.path)
+=======
+            // 4. Use documents directory in user domain
+            let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            print("Writing dataset files to:", documentsDir.path)
+>>>>>>> 2e67e0051b751c2cb77e05a5b414df2e4ed4e8a9
             let jsonlLines = lines.map { sentence -> String in
                 let dict = ["text": "Instruction: \(systemPrompt)\nAssistant: \(sentence)"]
                 let data = try! encoder.encode(dict)
@@ -668,13 +674,13 @@ class ChatViewModel: ObservableObject {
         }
         self.savedAdapters = names.sorted()
     }
-    func saveLoRAAdapters(from model: LoRAContainer, to directory: URL) throws {
+    nonisolated func saveLoRAAdapters(from model: LoRAContainer, to directory: URL) throws {
         // TODO: real save logic; for now, maybe just ensure dir exists
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         // No-op for now
     }
     
-    func loadLoRAAdapters(into lora: LoRAContainer, from directory: URL) throws {
+    nonisolated func loadLoRAAdapters(into lora: LoRAContainer, from directory: URL) throws {
         // TODO: implement actual load logic for your MLX version
         // For now, ensure directory exists; real implementation should read adapter weights and load into `lora`.
         guard FileManager.default.fileExists(atPath: directory.path) else {
@@ -704,7 +710,7 @@ class ChatViewModel: ObservableObject {
                         model: context.model,
                         configuration: LoRAConfiguration(numLayers: self.loraLayers)
                     )
-                    try await saveLoRAAdapters(from: lora, to: targetDir)
+                    try saveLoRAAdapters(from: lora, to: targetDir)
                 }
             } catch {
                 print("Failed to save adapters: \(error)")
