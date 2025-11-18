@@ -42,6 +42,7 @@ struct ChatUISession: Identifiable {
     var model: String
     var messages: [String]
     let created: Date
+    var alias: String
 }
 
 struct ModelOption {
@@ -67,6 +68,7 @@ struct ContentView: View {
     @State private var ChatUISessions: [ChatUISession] = []
     @State private var selectedSessionID: UUID? = nil
     @State private var historyFilterModel: String = "ShukraJaliya/BLUECOMPUTER.2"
+    @State private var historyFilterAlias: String = ""
     
     @State private var thinkingStartDate: Date? = nil
     @State private var thinkingElapsed: Int = 0
@@ -177,13 +179,14 @@ struct ContentView: View {
                     id: UUID(),
                     model: selectedModel,
                     messages: [],
-                    created: Date()
+                    created: Date(),
+                    alias: selectedCourseKey.isEmpty ? displayNameFor(selectedModel) : selectedCourseKey
                 )
                 ChatUISessions.insert(newSession, at: 0)
                 selectedSessionID = newSession.id
                 vm.messages = []
                 vm.input = ""
-                selectedCourseKey = displayNameFor(selectedModel)
+                selectedCourseKey = newSession.alias
             }
         }
         .onChange(of: selectedSessionID) { newValue in
@@ -195,7 +198,7 @@ struct ContentView: View {
             }
             vm.messages = session.messages
             selectedModel = session.model
-            selectedCourseKey = displayNameFor(selectedModel)
+            selectedCourseKey = session.alias
             
             vm.selectModel(selectedModel)
         }
@@ -251,6 +254,10 @@ struct ContentView: View {
                                 boundModel.wrappedValue = id
                                 vm.selectModel(id)
                             }
+                        }
+                        if let sessionID = selectedSessionID,
+                           let index = ChatUISessions.firstIndex(where: { $0.id == sessionID }) {
+                            ChatUISessions[index].alias = newKey
                         }
                     }
                 }
@@ -353,14 +360,15 @@ struct ContentView: View {
                     id: UUID(),
                     model: selectedModel,
                     messages: [],
-                    created: Date()
+                    created: Date(),
+                    alias: trimmed
                 )
                 
                 ChatUISessions.insert(newSession, at: 0)
                 selectedSessionID = newSession.id
                 vm.messages = []
                 vm.input = ""
-                selectedCourseKey = displayNameFor(selectedModel)
+                selectedCourseKey = newSession.alias
 
                 // Clear the field after saving
                 newCourseName = ""
@@ -518,7 +526,8 @@ struct ContentView: View {
                         id: UUID(),
                         model: selectedModel,
                         messages: [],
-                        created: Date()
+                        created: Date(),
+                        alias: selectedCourseKey.isEmpty ? displayNameFor(selectedModel) : selectedCourseKey
                     )
                     ChatUISessions.insert(newSession, at: 0)
                     selectedSessionID = newSession.id
@@ -532,7 +541,7 @@ struct ContentView: View {
             }
             .padding([.top, .horizontal])
             
-            Text("Active course: \(displayNameFor(selectedModel))")
+            Text("Active course: \((ChatUISessions.first(where: { $0.id == selectedSessionID })?.alias) ?? (selectedCourseKey.isEmpty ? displayNameFor(selectedModel) : selectedCourseKey))")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .padding(.horizontal)
@@ -715,7 +724,8 @@ struct ContentView: View {
                             id: UUID(),
                             model: selectedModel,
                             messages: [],
-                            created: Date()
+                            created: Date(),
+                            alias: selectedCourseKey.isEmpty ? displayNameFor(selectedModel) : selectedCourseKey
                         )
                         ChatUISessions.insert(newSession, at: 0)
                         selectedSessionID = newSession.id
@@ -734,6 +744,14 @@ struct ContentView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+
+                    Picker("Alias", selection: $historyFilterAlias) {
+                        Text("All Aliases").tag("")
+                        ForEach(Array(Set(ChatUISessions.map { $0.alias })).sorted(), id: \.self) { alias in
+                            Text(alias).tag(alias)
+                        }
+                    }
+                    .pickerStyle(.menu)
                 }
                 .padding([.top, .horizontal])
                 
@@ -747,6 +765,38 @@ struct ContentView: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Conversation \(session.id.uuidString.prefix(5))")
+                                        .font(.headline)
+                                    if let lastMessage = session.messages.last {
+                                        Text(lastMessage)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                    } else {
+                                        Text("No messages yet")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Text(session.created, style: .relative)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
+                Section(header: Text(historyFilterAlias.isEmpty ? "By Alias" : historyFilterAlias)) {
+                    ForEach(ChatUISessions.filter { historyFilterAlias.isEmpty ? true : $0.alias == historyFilterAlias }.prefix(5)) { session in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Button {
+                                selectedSessionID = session.id
+                                vm.messages = session.messages
+                                selectedModel = session.model
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(session.alias)
                                         .font(.headline)
                                     if let lastMessage = session.messages.last {
                                         Text(lastMessage)
