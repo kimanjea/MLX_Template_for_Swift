@@ -456,15 +456,11 @@ class ChatViewModel: ObservableObject {
             // 3. Plain system prompt string (no double-encoding)
             let systemPrompt = SYSTEM_PROMPT2
             
-<<<<<<< HEAD
-            // 4. Use your repo directory, not sandbox
-            let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            print("Using directory:", documentsDir.path)
-=======
             // 4. Use documents directory in user domain
             let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             print("Writing dataset files to:", documentsDir.path)
->>>>>>> 2e67e0051b751c2cb77e05a5b414df2e4ed4e8a9
+
+            
             let jsonlLines = lines.map { sentence -> String in
                 let dict = ["text": "Instruction: \(systemPrompt)\nAssistant: \(sentence)"]
                 let data = try! encoder.encode(dict)

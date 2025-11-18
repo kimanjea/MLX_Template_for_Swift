@@ -202,7 +202,6 @@ struct ContentView: View {
     }
     
     // MARK: - Model Picker View
-    // MARK: - Model Picker View
     private var modelPickerView: some View {
         VStack(spacing: 24) {
             Spacer()
@@ -228,15 +227,6 @@ struct ContentView: View {
             }
             
             Picker("Model", selection: boundModel) {
-<<<<<<< HEAD
-                // Base models
-                Text("Qwen/Qwen3-VL-2B-Instruct")
-                    .tag("Qwen/Qwen3-VL-2B-Instruct")
-                Text("ShukraJaliya/BLUECOMPUTER.2")
-                    .tag("ShukraJaliya/BLUECOMPUTER.2")
-                Text("Qwen/Qwen2.5-1.5B-Instruct")
-                    .tag("Qwen/Qwen2.5-1.5B-Instruct")
-
                 // Saved adapters with delete context menu
                 ForEach(vm.savedAdapters, id: \.self) { name in
                     Text("Adapter: \(name)")
@@ -248,10 +238,9 @@ struct ContentView: View {
                                 Label("Delete Adapter", systemImage: "trash")
                             }
                         }
-=======
+                }
                 ForEach(modelOptions, id: \.id) { option in
                     Text(option.name).tag(option.id)
->>>>>>> origin/main
                 }
             }
             .pickerStyle(.menu)
@@ -994,8 +983,8 @@ struct ContentView: View {
         }
         .navigationTitle("Settings")
     #endif
-    }
-}
+    } // end settingsView platform conditions
+} // End of ContentView
 
 // Message bubble
 struct MessageBubble: View {
