@@ -39,12 +39,8 @@ class ChatViewModel: ObservableObject {
     @Published var modelLoadProgress: Foundation.Progress? = nil
     @Published var embedModelProgress: Foundation.Progress? = nil
     @Published var embedderModel: MLXEmbedders.ModelContainer?
-    @Published var MinEmbedderModel: MLXEmbedders.ModelContainer?
-    
     @Published var isTraining: Bool = false
     @Published var trainingProgress: Double? = nil
-    @Published private var showSaveAdapterSheet = false
-    @Published private var newAdapterName: String = ""
     @Published var savedAdapters: [String] = []
     private let adaptersDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Adapters", isDirectory: true)
@@ -741,25 +737,35 @@ class ChatViewModel: ObservableObject {
         }
 
         do {
+            // Use a non-BLUE base model so behavior matches the non-blue branch in send()
             let baseID = "ShukraJaliya/general"
             let model = try await loadModel(id: baseID, progressHandler: { _ in })
 
-            // 2) Attach LoRA container
+            // Attach LoRA container
             let lora = try LoRAContainer.from(
                 model: model.model,
                 configuration: LoRAConfiguration(numLayers: self.loraLayers)
             )
 
-            // 3) Load adapters from disk into the LoRA container
+            // Load adapters from disk into the LoRA container
             try loadLoRAAdapters(into: lora, from: dir)
 
-            // 4) Recreate chat session with adapted model
+            // Mirror non-blue model behavior: use SYSTEM_PROMPT2; RAG happens in send() using currentRAGPDFURL
             self.session = ChatSession(
                 model,
                 instructions: SYSTEM_PROMPT2,
                 generateParameters: GenerateParameters(maxTokens: 600, temperature: 0.4, topP: 0.8)
             )
+
+            // Record state so any UI treating currentModelID sees a non-blue model
+            self.currentModelID = baseID
             self.isAdapterActive = true
+
+            if let pdf = self.currentRAGPDFURL {
+                print("Adapter active. RAG will use training PDF at: \(pdf.path)")
+            } else {
+                print("Adapter active. No custom training PDF set; RAG will fallback to bundled PDF.")
+            }
 
             print("Applied adapter: \(name)")
             self.messages.append("Applied adapter: \(name)")
@@ -768,6 +774,7 @@ class ChatViewModel: ObservableObject {
             self.messages.append("Failed to apply adapter: \(error.localizedDescription)")
         }
     }
+
     
     /// Delete a saved LoRA adapter directory and update the in-memory list.
     func deleteAdapter(named name: String) {

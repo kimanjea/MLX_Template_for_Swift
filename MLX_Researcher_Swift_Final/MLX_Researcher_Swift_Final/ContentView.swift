@@ -219,57 +219,76 @@ struct ContentView: View {
     private var modelPickerView: some View {
         VStack(spacing: 24) {
             Spacer()
-            
+
             Image("Logo")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 100, height: 100)
                 .shadow(radius: 8)
-            
-            Image(systemName: "cpu")
-                .font(.system(size: 50))
-                .foregroundStyle(.blue.gradient)
-            
-            VStack(spacing: 8) {
-                Text("Select course")
-                    .font(.title2.bold())
-                
-                Text("Choose an AI model for your conversation")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            Picker(selectedCourseKey.isEmpty ? displayNameFor(boundModel.wrappedValue) : selectedCourseKey, selection: $selectedCourseKey) {
-                ForEach(Array(allModelOptions.enumerated()), id: \.offset) { _, option in
-                            // Use the visible name as a unique selection key
-                    Text(option.name).tag(option.name)
-                }
-            }
 
-            
-            Picker("Model", selection: boundModel) {
-                // Saved adapters with delete context menu
-                ForEach(vm.savedAdapters, id: \.self) { name in
-                    Text("Adapter: \(name)")
-                        .tag("adapter:\(name)")
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                vm.deleteAdapter(named: name)
-                            } label: {
-                                Label("Delete Adapter", systemImage: "trash")
+            HStack(alignment: .top, spacing: 24) {
+                // Left: course/model selection stack
+                VStack(spacing: 16) {
+                    Image(systemName: "cpu")
+                        .font(.system(size: 50))
+                        .foregroundStyle(.blue.gradient)
+
+                    VStack(spacing: 8) {
+                        Text("Select course")
+                            .font(.title2.bold())
+                        Text("Choose an AI model for your conversation")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    HStack(spacing: 12) {
+                        Text(selectedCourseKey.isEmpty ? displayNameFor(boundModel.wrappedValue) : selectedCourseKey)
+                            .font(.body)
+                            .frame(width: 140, alignment: .trailing)
+
+                        Picker("", selection: boundModel) {
+                            // Base models (tag by model ID)
+                            ForEach(modelOptions, id: \.id) { option in
+                                Text(option.name).tag(option.id)
+                            }
+                            if !vm.savedAdapters.isEmpty {
+                                Text("— Adapters —").disabled(true)
+                            }
+                            ForEach(vm.savedAdapters, id: \.self) { name in
+                                Text(name).tag("adapter:\(name)")
+                                    .contextMenu {
+                                        Button(role: .destructive) { vm.deleteAdapter(named: name) } label: {
+                                            Label("Delete Adapter", systemImage: "trash")
+                                        }
+                                    }
                             }
                         }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 200)
+                        .onChange(of: boundModel.wrappedValue) { newModelID in
+                            // Update VM and alias label
+                            if newModelID.hasPrefix("adapter:") {
+                                let adapterName = String(newModelID.dropFirst("adapter:".count))
+                                Task { await vm.applyAdapter(named: adapterName) }
+                                selectedCourseKey = adapterName
+                            } else {
+                                vm.selectModel(newModelID)
+                                selectedCourseKey = displayNameFor(newModelID)
+                            }
+                            if let sessionID = selectedSessionID,
+                               let index = ChatUISessions.firstIndex(where: { $0.id == sessionID }) {
+                                ChatUISessions[index].alias = selectedCourseKey
+                                ChatUISessions[index].model = newModelID
+                            }
+                        }
+                    }
                 }
-            }
-            .pickerStyle(.menu)
-            .frame(maxWidth: 200)
-            .onChange(of: boundModel.wrappedValue) { newModelID in
-                if newModelID.hasPrefix("adapter:") {
-                    let adapterName = String(newModelID.dropFirst("adapter:".count))
-                    Task { await vm.applyAdapter(named: adapterName) }
-                } else {
-                    vm.selectModel(newModelID)
-                }
+                .frame(maxWidth: .infinity, alignment: .top)
+
+                // Right: the uploader itself (compact card)
+                courseUploaderMiniView
+                    .frame(maxWidth: 360)
             }
 
             Spacer()
@@ -277,8 +296,8 @@ struct ContentView: View {
         .padding()
         .navigationTitle("Course Selection")
     }
+
     
-    // MARK: - Compact Course Uploader (for side-by-side in Model Picker)
     private var courseUploaderMiniView: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Upload Course PDF")
@@ -287,7 +306,7 @@ struct ContentView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(isDropTargeted ? Color.blue.opacity(0.15) : Color.gray.opacity(0.12))
-                    .frame(height: 160)
+                    .frame(width: 260, height: 160)
                     .overlay {
                         VStack(spacing: 8) {
                             if let name = selectedPDFName {
@@ -339,54 +358,81 @@ struct ContentView: View {
                         return true
                     }
             }
-            TextField("Course name (alias)", text: $newCourseName)
-                .textFieldStyle(.roundedBorder)
-            
-            Button("Save") {
-                let fixedID = "ShukraJaliya/general"
-                let trimmed = newCourseName.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return }
 
-                // Only add if an identical alias for the same fixed id does not already exist
-                if !customModelOptions.contains(where: { $0.id == fixedID && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
-                    customModelOptions.append(ModelOption(id: fixedID, name: trimmed))
+            // Inserted HStack for RAG-only usage
+            HStack(spacing: 12) {
+                Button {
+                    // Use the currently selected PDF purely for RAG (no training)
+                    if let name = selectedPDFName, let docs = try? FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
+                        // If the selected path is known via recent importer/drop, we can try to reconstruct a file URL from name in Documents if copied; otherwise just keep currentRAGPDFURL as already set by setRAGPDF
+                        // Here, simply rely on the already-set currentRAGPDFURL when the user picked/dropped the file.
+                        // Trigger a small user-visible confirmation by updating selectedPDFName (already shown above) and printing.
+                        print("Using uploaded PDF for RAG only: \(name)")
+                    }
+                    // Nothing else needed: vm.setRAGPDF(url:) is already called on pick/drop; calling it again ensures it's current
+                    if let current = vm.currentRAGPDFURL { vm.setRAGPDF(url: current) }
+                } label: {
+                    Label("Use for RAG Only", systemImage: "text.magnifyingglass")
                 }
+                .buttonStyle(.bordered)
+                .disabled(selectedPDFName == nil)
 
-                // Select the fixed model id and trigger model selection if needed
-                if boundModel.wrappedValue != fixedID {
-                    boundModel.wrappedValue = fixedID
-                    vm.selectModel(fixedID)
+                if vm.currentRAGPDFURL != nil {
+                    Text("RAG source set")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                // Keep the picker title in sync with the new alias
-                selectedCourseKey = trimmed
-                
-                let newSession = ChatUISession(
-                    id: UUID(),
-                    model: selectedModel,
-                    messages: [],
-                    created: Date(),
-                    alias: trimmed
-                )
-                
-                ChatUISessions.insert(newSession, at: 0)
-                selectedSessionID = newSession.id
-                vm.messages = []
-                vm.input = ""
-                selectedCourseKey = newSession.alias
-
-                // Clear the field after saving
-                newCourseName = ""
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(newCourseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-            Text("Drag & drop or tap to select a PDF. It will be used for RAG.")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            // Training controls (compact)
+            VStack(spacing: 8) {
+                if selectedPDFName != nil {
+                    Button(action: { vm.trainFromCurrentPDF() }) {
+                        Label("Train from Uploaded PDF", systemImage: "hammer")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vm.isTraining)
+
+                    if vm.isTraining {
+                        Text(
+                            vm.trainingProgress != nil
+                            ? "Training model (LoRA)…"
+                            : (vm.didFinishExtraction ? "Preparing training data…" : "Extracting content…")
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                        if let progress = vm.trainingProgress {
+                            VStack(spacing: 6) {
+                                ProgressView(value: progress, total: 1.0) {
+                                    Text("Progress…")
+                                }
+                                .frame(width: 200)
+                                Text("\(Int(progress * 100))%")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            ProgressView { Text("Please Wait..") }
+                                .frame(width: 200)
+                        }
+                    }
+
+                    // Save adapter button in mini view as well
+                    Button(action: {
+                        showSaveAdapterSheet = true
+                    }) {
+                        Label("Save Trained Adapter", systemImage: "square.and.arrow.down")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(vm.isTraining)
+                }
+            }
+
         }
         .fileImporter(isPresented: $showPDFImporter,
                       allowedContentTypes: [.pdf],
-                      allowsMultipleSelection: false) { result in
+                       allowsMultipleSelection: false) { result in
             switch result {
             case .success(let urls):
                 if let url = urls.first {
@@ -398,6 +444,37 @@ struct ContentView: View {
                 }
             case .failure(let error):
                 print("fileImporter error: \(error.localizedDescription)")
+            }
+        }
+        // Sheet to name & save adapter (reused from full view)
+        .sheet(isPresented: $showSaveAdapterSheet) {
+            NavigationStack {
+                Form {
+                    Section("Adapter Name") {
+                        TextField("e.g. DataActivism_v1", text: $newAdapterName)
+                    }
+
+                    Section {
+                        Button("Save") {
+                            let name = newAdapterName
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !name.isEmpty else { return }
+                            Task {
+                                await vm.saveCurrentAdapters(named: name)
+                            }
+                            newAdapterName = ""
+                            showSaveAdapterSheet = false
+                        }
+                        .disabled(newAdapterName
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                            .isEmpty)
+
+                        Button("Cancel", role: .cancel) {
+                            showSaveAdapterSheet = false
+                        }
+                    }
+                }
+                .navigationTitle("Save Adapter")
             }
         }
     }
@@ -716,100 +793,6 @@ struct ContentView: View {
             }
         }
     }
-    
-    // MARK: - Upload Course View (simplest drop + picker)
-        private var uploadCourseView: some View {
-            GeometryReader { geo in
-                // Precompute side length
-                let width = geo.size.width
-                let height = geo.size.height
-                let minSide = min(width, height)
-                let side: CGFloat = max(220.0, min(minSide * 0.35, 420.0))
-
-                VStack(spacing: 16) {
-                    UploadDropTarget(
-                        side: side,
-                        isDropTargeted: $isDropTargeted,
-                        selectedPDFName: selectedPDFName,
-                        onTap: { showPDFImporter = true },
-                        onURLPicked: { url in
-                            vm.setRAGPDF(url: url)
-                            selectedPDFName = url.lastPathComponent
-                        }
-                    )
-
-                    TrainingControls(
-                        selectedPDFName: selectedPDFName,
-                        isTraining: vm.isTraining,
-                        trainingProgress: vm.trainingProgress,
-                        didFinishExtraction: vm.didFinishExtraction,
-                        onTrain: { vm.trainFromCurrentPDF() }
-                    )
-                    .frame(maxWidth: .infinity)
-
-                    // NEW: Save trained adapter button
-                    Button(action: {
-                        showSaveAdapterSheet = true
-                    }) {
-                        Label("Save Trained Adapter", systemImage: "square.and.arrow.down")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(vm.isTraining)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .padding()
-            .navigationTitle("PDF insertion")
-            .fileImporter(
-                isPresented: $showPDFImporter,
-                allowedContentTypes: [.pdf],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    if let url = urls.first {
-                        Task { @MainActor in
-                            vm.setRAGPDF(url: url)
-                            selectedPDFName = url.lastPathComponent
-                            print("Picker: using file \(url.path)")
-                        }
-                    }
-                case .failure(let error):
-                    print("fileImporter error: \(error.localizedDescription)")
-                }
-            }
-            // NEW: sheet to name & save adapter
-            .sheet(isPresented: $showSaveAdapterSheet) {
-                NavigationStack {
-                    Form {
-                        Section("Adapter Name") {
-                            TextField("e.g. DataActivism_v1", text: $newAdapterName)
-                        }
-
-                        Section {
-                            Button("Save") {
-                                let name = newAdapterName
-                                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                                guard !name.isEmpty else { return }
-                                Task {
-                                    await vm.saveCurrentAdapters(named: name)
-                                }
-                                newAdapterName = ""
-                                showSaveAdapterSheet = false
-                            }
-                            .disabled(newAdapterName
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                                .isEmpty)
-
-                            Button("Cancel", role: .cancel) {
-                                showSaveAdapterSheet = false
-                            }
-                        }
-                    }
-                    .navigationTitle("Save Adapter")
-                }
-            }
-        }
 
     
     private struct UploadDropTarget: View {
@@ -1256,4 +1239,3 @@ struct MLX_templateApp: App {
         }
     }
 }
-
