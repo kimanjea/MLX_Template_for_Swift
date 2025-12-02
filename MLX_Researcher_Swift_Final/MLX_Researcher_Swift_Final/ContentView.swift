@@ -97,21 +97,10 @@ struct ContentView: View {
     private let welcomeColors: [Color] = [
         Color(hex: "#DE0058"),
         Color(hex: "#00B500"),
-        Color(hex: "#EDC300"),
-        Color(hex: "#1266E2"),
-        Color(hex: "#663887")
-    ]
-    
-    /* Commented out: use welcomeColors for both the suggested questions and chat bubbles
-     * so that it is easier to keep them in sync.
-    private let chatColors: [Color] = [
-        Color(hex: "#DE0058"),
-        Color(hex: "#00B500"),
         Color(hex: "#1266E2"),
         Color(hex: "#663887"),
         Color(hex: "#DE0058")
     ]
-    */
 
     private var boundModel: Binding<String> {
         Binding(
