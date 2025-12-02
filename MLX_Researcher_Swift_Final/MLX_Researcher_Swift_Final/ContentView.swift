@@ -89,6 +89,11 @@ struct ContentView: View {
         "Examples of Data Activism"
     ]
     
+
+    // NOTE: MAKE SURE TO KEEP AN ODD NUMBER OF TOTAL COLORS
+    // OTHERWISE THE COLORS WILL LOOP. IF YOU HAVE AN EVEN NUMBER
+    // OF COLORS, JUST MAKE THE LAST COLOR THE SAME AS THE FIRST TO 
+    // AVOID THIS ISSUE.
     private let welcomeColors: [Color] = [
         Color(hex: "#DE0058"),
         Color(hex: "#00B500"),
