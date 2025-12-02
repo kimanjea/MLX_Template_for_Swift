@@ -97,6 +97,8 @@ struct ContentView: View {
         Color(hex: "#663887")
     ]
     
+    /* Commented out: use welcomeColors for both the suggested questions and chat bubbles
+     * so that it is easier to keep them in sync.
     private let chatColors: [Color] = [
         Color(hex: "#DE0058"),
         Color(hex: "#00B500"),
@@ -104,7 +106,8 @@ struct ContentView: View {
         Color(hex: "#663887"),
         Color(hex: "#DE0058")
     ]
-    
+    */
+
     private var boundModel: Binding<String> {
         Binding(
             get: {
@@ -134,6 +137,23 @@ struct ContentView: View {
         modelOptions + customModelOptions
     }
     
+    // Chooses a color index offset so welcome questions match their chat bubble colors
+    private func starterColorIndex(for message: String) -> Int? {
+    // strip "You: " prefix if present
+    let text: String
+    if message.hasPrefix("You: ") {
+        text = String(message.dropFirst(5))
+    } else {
+        text = message
+    }
+
+    // suggestedQuestions and palette use the same ordering
+    if let idx = suggestedQuestions.firstIndex(of: text) {
+        return idx
+    }
+    return nil
+    }
+
     // Prefer a user-defined alias for a given model id; fall back to built-in name
     private func displayNameFor(_ id: String) -> String {
         if let alias = customModelOptions.first(where: { $0.id == id })?.name {
@@ -629,12 +649,23 @@ struct ContentView: View {
 
     private var messagesView: some View {
         ScrollViewReader { proxy in
+            // figure out offset for color based on first message
+            // (if it uses starter questions there is an offset so it matches colors)
+            let starterOffset: Int = {
+                guard let first = vm.messages.first,
+                    let idx = starterColorIndex(for: first) else {
+                    return 0
+                }
+                return idx
+            }()
+
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(Array(vm.messages.enumerated()), id: \.offset) { index, message in
                         MessageBubble(message: message,
-                                      colorIndex: index,
-                                      chatColors: chatColors)
+                                    // ADDED OFFSET HERE SO COLORS MATCH W/ SUGGESTED QUESTIONS
+                                      colorIndex: index + starterOffset, 
+                                      welcomeColors: welcomeColors)
                             .id(index)
                     }
                 }
@@ -964,7 +995,7 @@ struct ContentView: View {
 struct MessageBubble: View {
     let message: String
     let colorIndex: Int
-    let chatColors: [Color]
+    let welcomeColors: [Color]
     
     private var isUser: Bool {
         message.starts(with: "You:")
@@ -990,7 +1021,7 @@ struct MessageBubble: View {
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 18)
-                            .fill(chatColors[colorIndex % chatColors.count])
+                            .fill(welcomeColors[colorIndex % welcomeColors.count])
                     )
                 Image(systemName: "person.fill")
                     .foregroundColor(.white)
