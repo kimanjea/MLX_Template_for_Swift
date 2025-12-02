@@ -259,7 +259,7 @@ struct ContentView: View {
                                 Text(name).tag("adapter:\(name)")
                                     .contextMenu {
                                         Button(role: .destructive) { vm.deleteAdapter(named: name) } label: {
-                                            Label("Delete Adapter", systemImage: "trash")
+                                            Label("Delete Adapter", systemImage: "fsesesee")
                                         }
                                     }
                             }

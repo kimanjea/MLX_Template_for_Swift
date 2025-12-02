@@ -44,6 +44,7 @@ class ChatViewModel: ObservableObject {
     @Published var savedAdapters: [String] = []
     private let adaptersDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Adapters", isDirectory: true)
+    @Published var didShowAdaptersAddedBanner: Bool = false
     
     // New: keep references to cancel ongoing work
     private var modelLoadTask: Task<Void, Never>?
@@ -264,7 +265,8 @@ class ChatViewModel: ObservableObject {
         question: String,
         chunks: [String],
         chunkEmbeddings: [[Float]],
-        topK: Int = 1
+        topK: Int = 1,
+        minSimilarity: Float = 0.25
     ) async throws -> [String] {
         // Get the embedding for the question string.
         let questionEmbeddingArrs = try await embedChunks([question])
@@ -275,16 +277,26 @@ class ChatViewModel: ObservableObject {
             dotProduct(qEmb, chunkEmb)
         }
         
-        // Get indices of top-k values (descending)
-        let topKIdx = similarities
+        // Log best similarity to help tuning
+        if let best = similarities.max() {
+            print("[RAG] Best similarity: \(best)")
+        } else {
+            print("[RAG] No similarities computed.")
+        }
+        
+        // Rank by similarity (descending)
+        let ranked = similarities
             .enumerated()
             .sorted(by: { $0.element > $1.element })
-            .prefix(topK)
-            .map { $0.offset }
+        
+        // Apply threshold first, then take topK
+        let filtered = ranked.filter { $0.element >= minSimilarity }.prefix(topK)
+        if filtered.isEmpty { return [] }
         
         // Return the corresponding chunk texts.
-        return topKIdx.map { chunks[$0] }
+        return filtered.map { chunks[$0.offset] }
     }
+
     
     /// Computes the dot product between two float arrays.
     private func dotProduct(_ a: [Float], _ b: [Float]) -> Float {
@@ -293,16 +305,16 @@ class ChatViewModel: ObservableObject {
     }
     
     let SYSTEM_PROMPT2 = """
-       You are an expert who teaches concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject."
+       You are an expert who teaches concepts step by step using clear, scaffolded language. You never provide exact code solutions. For questions with code or unclear elements, explain what each part means by guiding with detailed conceptual steps. For general questions (like 'How to..'), give a full explanation with a short example, but do not solve specific problems. If a user asks something off-topic, politely redirect them to focus on the relevant subject.
        """
     
     let SYSTEM_PROMPT = """
-                You are an expert who only teaches data activism and Python programming to K–12 students. 
-                You explain concepts step by step using clear, scaffolded language. 
-                You never provide exact code solutions. 
-                If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. 
-                For general programming questions (like "How to create a function?"), give a full explanation with a short example, but do not solve specific problems.  
-                If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
+                   You are an expert who only teaches data activism and Python programming to K–12 students. 
+                   You explain concepts step by step using clear, scaffolded language. 
+                   You never provide exact code solutions. 
+                   If a student submits code with question marks (?), explain what each line is supposed to do by guiding them with detailed conceptual steps. 
+                   For general programming questions (like \"How to create a function?\"), give a full explanation with a short example, but do not solve specific problems.  
+                   If a student asks something unrelated or off-topic, politely redirect them to focus on data activism or Python programming.
                 """
     
     /// Minimal helper: just remember which file to use for RAG
@@ -336,68 +348,90 @@ class ChatViewModel: ObservableObject {
                     self.finalContext = topChunks.first ?? ""
 
                     prompt = """
-                    <|im_start|>system \(SYSTEM_PROMPT2) <|im_end|>
-                    <|im_start|>user 
-                    Question: \(question)
+                    <|im_start|> system \(SYSTEM_PROMPT2) <|im_end|>
+                    <|im_start|> user \(question)
 
-                    background information (for your reference if relevant, do not quote directly unless needed): 
+                    background information (for your reference if relevant to user question, do not quote directly unless needed): 
                     \(self.finalContext)
                     ---
                     Please answer in your own words, explaining concepts clearly for a K–12 student. <|im_end|>
-                    <|im_start|>assistant
+                    <|im_start|> assistant
                     """
                     
                 } else {
                     if let topic = classifyTopic(for: question) {
                         print("Predicted topic: \(topic)")
+                        
+                        let lower = question.lowercased()
 
-                        let isCodingScaffold = question.contains("?") && (question.contains("def") || question.contains(":"))
+                        let isCodingScaffold =
+                        lower.contains("?") &&
+                        (lower.contains("def") || lower.contains("class") || lower.contains("import") || lower.contains("for") || lower.contains("while"))
 
                         if topic == "1" {
 
                             if isCodingScaffold {
                                 self.finalContext = ""
                                 prompt = """
-                                <|im_start|>system \(SYSTEM_PROMPT)<|im_end|>\
-                                <|im_start|>user \(question)<|im_end|>
-                                <|im_start|>assistant
+                                <|im_start|> system \(SYSTEM_PROMPT) <|im_end|>\
+                                <|im_start|> user \(question) <|im_end|>
+                                <|im_start|> assistant
                                 """
                             } else {
                                 let chunks = textChunker(for: question)
                                 let chunkEmbeddings = try await embedChunks(chunks)
-                                var topChunks = try await retrieveContext(
+                                let topChunks = try await retrieveContext(
                                     question: question,
                                     chunks: chunks,
                                     chunkEmbeddings: chunkEmbeddings,
-                                    topK: 1 // Change to more for more context
+                                    topK: 1, // Change to more for more context
+                                    minSimilarity: 0.25
                                 )
 
                                 self.finalContext = topChunks.first ?? ""
 
-                                prompt = """
-                                <|im_start|>system \(SYSTEM_PROMPT) <|im_end|>
-                                <|im_start|>user 
-                                Question: \(question)
+                                if self.finalContext.isEmpty {
+                                    // RAG yielded nothing above threshold — fall back to no-context prompt
+                                    prompt = """
+                                    <|im_start|> system \(SYSTEM_PROMPT) <|im_end|>
+                                    <|im_start|> user \(question) <|im_end|>
+                                    <|im_start|> assistant
+                                    """
+                                } else {
+                                    // Include the retrieved background
+                                    prompt = """
+                                    <|im_start|> system \(SYSTEM_PROMPT) <|im_end|>
+                                    <|im_start|> user \(question)
 
-                                background information (for your reference if relevant, do not quote directly unless needed): 
-                                \(self.finalContext)
-                                ---
-                                Please answer in your own words, explaining concepts clearly for a K–12 student. <|im_end|>
-                                <|im_start|>assistant
-                                """
+                                    background information (for your reference if relevant to user question, do not quote directly unless needed): 
+                                    \(self.finalContext)
+                                    ---
+                                    Please answer in your own words, explaining concepts clearly for a K–12 student. <|im_end|>
+                                    <|im_start|> assistant
+                                    """
+                                }
                             }
 
                         } else {
                             self.finalContext = ""
 
                             prompt = """
-                                     <|im_start|>system \(SYSTEM_PROMPT).<|im_end|>
-                                     <|im_start|>user \(question)<|im_end|>
-                                     <|im_start|>assistant
+                                     <|im_start|> system \(SYSTEM_PROMPT) <|im_end|>
+                                     <|im_start|> user \(question) <|im_end|>
+                                     <|im_start|> assistant
                                      """
                         }
-                    } 
+                    } else {
+                        // Fallback when classification fails (nil)
+                        self.finalContext = ""
+                        prompt = """
+                                 <|im_start|> system \(SYSTEM_PROMPT) <|im_end|>
+                                 <|im_start|> user \(question) <|im_end|>
+                                 <|im_start|> assistant
+                                 """
+                    }
                 }
+
                 
                 print("[Prompt sent to model]:\n\(prompt)")
                 
@@ -414,7 +448,6 @@ class ChatViewModel: ObservableObject {
             self.isReady = true
         }
     }
-    
 
     
     // Updated method with requested changes:
@@ -570,7 +603,7 @@ class ChatViewModel: ObservableObject {
 
     // MARK: - LoRA Training Core
     private func loadTrainingModelContainer() async throws -> MLXLMCommon.ModelContainer {
-        let modelID = "Qwen/Qwen2.5-1.5B-Instruct"
+        let modelID = "ShukraJaliya/general"
         let config = LLMModelFactory.shared.configuration(id: modelID)
         let container = try await LLMModelFactory.shared.loadContainer(
             hub: HubApi(), configuration: config
@@ -712,7 +745,7 @@ class ChatViewModel: ObservableObject {
         let manifest: [String: Any] = [
             "name": name,
             "date": ISO8601DateFormatter().string(from: Date()),
-            "baseModelID": "Qwen/Qwen2.5-1.5B-Instruct",
+            "baseModelID": "ShukraJaliya/general",
             "loraLayers": loraLayers,
             "learningRate": learningRate,
             "trainingIterations": trainingIterations
@@ -802,5 +835,4 @@ class ChatViewModel: ObservableObject {
             print("Failed to delete adapter '\(name)': \(error)")
         }
     }
-}
-
+} 
