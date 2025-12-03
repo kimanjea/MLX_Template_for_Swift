@@ -117,7 +117,7 @@ class ChatViewModel: ObservableObject {
     }
     
     private func classifyTopic(for question: String) -> String? {
-        guard let modelURL = Bundle.main.url(forResource: "TopicClassifier", withExtension: "mlmodelc") else {
+        guard let modelURL = Bundle.main.url(forResource: "DataActivismClassifier", withExtension: "mlmodelc") else {
             return nil
         }
         do {
