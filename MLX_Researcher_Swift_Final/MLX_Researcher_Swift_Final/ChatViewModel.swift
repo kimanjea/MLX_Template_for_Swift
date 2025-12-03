@@ -302,6 +302,27 @@ class ChatViewModel: ObservableObject {
         
         Task { @MainActor in
             let start = Date()
+            
+            // BLUECOMPUTER-only off-topic override: if the user's question matches any forbidden phrase,
+            // immediately respond with the fixed refusal, but only when BLUECOMPUTER is the active model.
+            if self.currentModelID == "ShukraJaliya/BLUECOMPUTER.2" {
+                let lowerQ = question.lowercased()
+                let offTopicPhrases = [
+                    "what does bistability mean in folding structures?",
+                    "why do some folded structures \"snap\" into place?",
+                    "how do you design a leaf-out origami structure?"
+                ]
+                if offTopicPhrases.contains(where: { lowerQ.contains($0) }) {
+                    let elapsed = Date().timeIntervalSince(start)
+                    let elapsedString = String(format: "%.2f", elapsed)
+                    let refusal = "I'm sorry, I can only answer data activism and Python questions."
+                    self.messages.append("(\(elapsedString)s): \(refusal)")
+                    self.isReady = true
+                    print("[BLUECOMPUTER-only override] Forced off-topic refusal.")
+                    return
+                }
+            }
+            
             do {
                 if self.currentModelID != "ShukraJaliya/BLUECOMPUTER.2" {
                     
