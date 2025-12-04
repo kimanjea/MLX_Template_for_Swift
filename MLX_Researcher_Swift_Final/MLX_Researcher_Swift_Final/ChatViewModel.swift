@@ -324,6 +324,7 @@ class ChatViewModel: ObservableObject {
     }
     
     func send() {
+        //print("currentModelID at send:", self.currentModelID)
         guard let session = self.session, !self.input.isEmpty else { return }
         let question = self.input
         self.messages.append("You: \(question)")

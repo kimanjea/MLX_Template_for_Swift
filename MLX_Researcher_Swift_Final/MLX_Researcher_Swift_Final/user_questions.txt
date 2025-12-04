@@ -1,5 +1,0 @@
-What does a variable do in Python?
-How can I use a for loop?
-What is data activism?
-How do I read a CSV file?
-What does it mean to analyze data?

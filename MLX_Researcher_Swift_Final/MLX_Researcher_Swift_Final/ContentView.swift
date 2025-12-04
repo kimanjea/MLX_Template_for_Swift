@@ -218,12 +218,10 @@ struct ContentView: View {
     // MARK: - Model Picker View
     private var modelPickerView: some View {
         VStack(spacing: 24) {
-            Spacer()
-
             Image("Logo")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 100, height: 100)
+                .frame(width: 84, height: 84)
                 .shadow(radius: 8)
 
             HStack(alignment: .top, spacing: 24) {
@@ -245,13 +243,20 @@ struct ContentView: View {
                     HStack(spacing: 12) {
                         Text(selectedCourseKey.isEmpty ? displayNameFor(boundModel.wrappedValue) : selectedCourseKey)
                             .font(.body)
-                            .frame(width: 140, alignment: .trailing)
+                            .frame(width: 160, alignment: .trailing)
 
                         Picker("", selection: boundModel) {
-                            // Base models (tag by model ID)
+                            // 1) Built-in courses
                             ForEach(modelOptions, id: \.id) { option in
                                 Text(option.name).tag(option.id)
                             }
+
+                            // 2) User-added aliases (saved PDFs) — keep these right after built-ins
+                            ForEach(customModelOptions, id: \.id) { option in
+                                Text(option.name).tag(option.id)
+                            }
+
+                            // 3) Existing adapters section (training/adapters remain intact)
                             if !vm.savedAdapters.isEmpty {
                                 Text("— Adapters —").disabled(true)
                             }
@@ -259,19 +264,18 @@ struct ContentView: View {
                                 Text(name).tag("adapter:\(name)")
                                     .contextMenu {
                                         Button(role: .destructive) { vm.deleteAdapter(named: name) } label: {
-                                            Label("Delete Adapter", systemImage: "fsesesee")
+                                            Label("Delete Adapter", systemImage: "trash")
                                         }
                                     }
                             }
                         }
                         .pickerStyle(.menu)
-                        .frame(maxWidth: 200)
+                        .frame(maxWidth: 220)
                         .onChange(of: boundModel.wrappedValue) { newModelID in
-                            // Update VM and alias label
                             if newModelID.hasPrefix("adapter:") {
                                 let adapterName = String(newModelID.dropFirst("adapter:".count))
                                 Task { await vm.applyAdapter(named: adapterName) }
-                                selectedCourseKey = adapterName
+                                selectedCourseKey = displayNameFor(newModelID)
                             } else {
                                 vm.selectModel(newModelID)
                                 selectedCourseKey = displayNameFor(newModelID)
@@ -284,20 +288,20 @@ struct ContentView: View {
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .top)
+                .frame(maxWidth: 420, alignment: .topLeading)
+                .layoutPriority(1)
 
                 // Right: the uploader itself (compact card)
                 courseUploaderMiniView
                     .frame(maxWidth: 360)
             }
-
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .padding()
+        .frame(maxWidth: 900)
         .navigationTitle("Course Selection")
     }
 
-    
+    // MARK: - Upload + Save (keeps training + adapter features)
     private var courseUploaderMiniView: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Upload Course PDF")
@@ -359,32 +363,57 @@ struct ContentView: View {
                     }
             }
 
-            // Inserted HStack for RAG-only usage
+            // Save to Courses: force GENERAL model with RAG (no adapter id), add alias mapped to GENERAL
             HStack(spacing: 12) {
                 Button {
-                    // Use the currently selected PDF purely for RAG (no training)
-                    if let name = selectedPDFName, let docs = try? FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
-                        // If the selected path is known via recent importer/drop, we can try to reconstruct a file URL from name in Documents if copied; otherwise just keep currentRAGPDFURL as already set by setRAGPDF
-                        // Here, simply rely on the already-set currentRAGPDFURL when the user picked/dropped the file.
-                        // Trigger a small user-visible confirmation by updating selectedPDFName (already shown above) and printing.
-                        print("Using uploaded PDF for RAG only: \(name)")
+                    // Require a PDF to be chosen for RAG
+                    guard let pdfURL = vm.currentRAGPDFURL else { return }
+
+                    // Derive a friendly course name from field or filename
+                    let defaultName = pdfURL.deletingPathExtension().lastPathComponent
+                    let friendlyName = (newCourseName.isEmpty ? defaultName : newCourseName)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !friendlyName.isEmpty else { return }
+
+                    Task { @MainActor in
+                        let fixedID = "ShukraJaliya/general"
+                        print("[RAG Save] Alias=\(friendlyName). Forcing base model: \(fixedID)")
+
+                        // Ensure alias appears in picker mapped to the general model id
+                        if !customModelOptions.contains(where: { $0.id == fixedID && $0.name.caseInsensitiveCompare(friendlyName) == .orderedSame }) {
+                            customModelOptions.append(ModelOption(id: fixedID, name: friendlyName))
+                        }
+
+                        // Switch selection to the general base model
+                        selectedCourseKey = friendlyName
+                        selectedModel = fixedID
+                        if let sessionID = selectedSessionID,
+                           let index = ChatUISessions.firstIndex(where: { $0.id == sessionID }) {
+                            ChatUISessions[index].alias = friendlyName
+                            ChatUISessions[index].model = fixedID
+                        }
+
+                        // Tell the VM to select the general model; keep RAG PDF as-is
+                        vm.selectModel(fixedID)
+                        print("[RAG Save] Using general model with RAG PDF=\(vm.currentRAGPDFURL?.lastPathComponent ?? "none") and alias=\(friendlyName)")
+
+                        // Clear alias field after save
+                        newCourseName = ""
                     }
-                    // Nothing else needed: vm.setRAGPDF(url:) is already called on pick/drop; calling it again ensures it's current
-                    if let current = vm.currentRAGPDFURL { vm.setRAGPDF(url: current) }
                 } label: {
-                    Label("Use for RAG Only", systemImage: "text.magnifyingglass")
+                    Label("Save to Courses", systemImage: "tray.and.arrow.down")
                 }
-                .buttonStyle(.bordered)
-                .disabled(selectedPDFName == nil)
+                .buttonStyle(.borderedProminent)
+                .disabled(selectedPDFName == nil || vm.currentRAGPDFURL == nil)
 
                 if vm.currentRAGPDFURL != nil {
-                    Text("RAG source set")
+                    Text("Ready to save")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            // Training controls (compact)
+            // Training controls (kept)
             VStack(spacing: 8) {
                 if selectedPDFName != nil {
                     Button(action: { vm.trainFromCurrentPDF() }) {
@@ -418,7 +447,7 @@ struct ContentView: View {
                         }
                     }
 
-                    // Save adapter button in mini view as well
+                    // Keep existing "Save Trained Adapter" sheet
                     Button(action: {
                         showSaveAdapterSheet = true
                     }) {
@@ -432,7 +461,7 @@ struct ContentView: View {
         }
         .fileImporter(isPresented: $showPDFImporter,
                       allowedContentTypes: [.pdf],
-                       allowsMultipleSelection: false) { result in
+                      allowsMultipleSelection: false) { result in
             switch result {
             case .success(let urls):
                 if let url = urls.first {
@@ -446,7 +475,6 @@ struct ContentView: View {
                 print("fileImporter error: \(error.localizedDescription)")
             }
         }
-        // Sheet to name & save adapter (reused from full view)
         .sheet(isPresented: $showSaveAdapterSheet) {
             NavigationStack {
                 Form {
@@ -478,26 +506,26 @@ struct ContentView: View {
             }
         }
     }
-    
+
     private var modelLoadingOverlay: some View {
         Group {
             if vm.isModelLoading {
                 ZStack {
                     Color.black.opacity(0.6)
                         .ignoresSafeArea()
-                    
+
                     VStack(spacing: 20) {
                         Image("Logo")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 80, height: 80)
                             .shadow(radius: 10)
-                        
+
                         if let progress = vm.modelLoadProgress {
                             VStack(spacing: 12) {
                                 Text("Loading Course...")
                                     .font(.title3.bold())
-                                
+
                                 ProgressView(value: progress.fractionCompleted) {
                                     Text("\(Int(progress.fractionCompleted * 100))%")
                                         .font(.caption)
@@ -511,13 +539,13 @@ struct ContentView: View {
                             VStack(spacing: 12) {
                                 Text("Loading Course...")
                                     .font(.title3.bold())
-                                
+
                                 ProgressView()
                                     .progressViewStyle(.circular)
                                     .scaleEffect(1.2)
                             }
                         }
-                        
+
                         Text("Please wait...")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
@@ -535,24 +563,24 @@ struct ContentView: View {
             }
         }
     }
-    
+
     private var embeddermodelLoadingOverlay: some View {
         Group {
             if vm.isEmbedModelLoading {
                 ZStack {
                     Color.black.opacity(0.6)
                         .ignoresSafeArea()
-                    
+
                     VStack(spacing: 20) {
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.system(size: 60))
                             .foregroundStyle(.blue.gradient)
-                        
+
                         if let progress = vm.embedModelProgress {
                             VStack(spacing: 12) {
                                 Text("Loading Embedder...")
                                     .font(.title3.bold())
-                                
+
                                 ProgressView(value: progress.fractionCompleted) {
                                     Text("\(Int(progress.fractionCompleted * 100))%")
                                         .font(.caption)
@@ -566,13 +594,13 @@ struct ContentView: View {
                             VStack(spacing: 12) {
                                 Text("Loading Embedder...")
                                     .font(.title3.bold())
-                                
+
                                 ProgressView()
                                     .progressViewStyle(.circular)
                                     .scaleEffect(1.2)
                             }
                         }
-                        
+
                         Text("Preparing embeddings...")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
