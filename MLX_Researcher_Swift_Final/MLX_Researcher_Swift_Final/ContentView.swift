@@ -52,7 +52,7 @@ struct ModelOption {
 
 // Map backend IDs to user-friendly names
 let modelOptions: [ModelOption] = [
-    ModelOption(id: "ShukraJaliya/general", name: "General Course1"),
+    ModelOption(id: "Qwen/Qwen2.5-1.5B-Instruct", name: "General Course1"),
     ModelOption(id: "ShukraJaliya/BLUECOMPUTER.2", name: "Data Activism")
 ]
 
