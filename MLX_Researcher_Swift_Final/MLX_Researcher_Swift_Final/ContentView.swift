@@ -62,6 +62,8 @@ func nameFor(_ id: String) -> String {
 }
 
 struct ContentView: View {
+    // variable for which color theme the environment currently is
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var vm = ChatViewModel()
     @State private var selectedModel: String = "ShukraJaliya/BLUECOMPUTER.2"
     // 2. Replace single session ID with multi-session state:
@@ -90,18 +92,34 @@ struct ContentView: View {
     ]
     
 
-    // NOTE: MAKE SURE TO KEEP AN ODD NUMBER OF TOTAL COLORS
+    // IMPORTANT NOTE: MAKE SURE TO KEEP AN ODD NUMBER OF TOTAL COLORS
     // OTHERWISE THE COLORS WILL LOOP. IF YOU HAVE AN EVEN NUMBER
     // OF COLORS, JUST MAKE THE LAST COLOR THE SAME AS THE FIRST TO 
     // AVOID THIS ISSUE.
-    private let welcomeColors: [Color] = [
-        Color(hex: "#DE0058"),
-        Color(hex: "#00B500"),
-        Color(hex: "#1266E2"),
-        Color(hex: "#663887"),
-        Color(hex: "#DE0058")
+    
+    // Light mode palette (last color = bright yellow)
+    private let lightPalette: [Color] = [
+        Color(hex: "#DE0058"), // red
+        Color(hex: "#00B500"), // green
+        Color(hex: "#1266E2"), // blue
+        Color(hex: "#663887"), // purple
+        Color(hex: "#EDB603")  // slightly darker yellow for light mode
     ]
 
+    // Dark mode palette (same colors, softer yellow at the end)
+    private let darkPalette: [Color] = [
+        Color(hex: "#DE0058"), // red
+        Color(hex: "#00B500"), // green
+        Color(hex: "#1266E2"), // blue
+        Color(hex: "#663887"), // purple
+        Color(hex: "#E3BC30") // slightly lighter yellow for dark mode
+    ]
+
+    // Choose palette based on system theme
+    private var currentPalette: [Color] {
+        colorScheme == .dark ? darkPalette : lightPalette
+    }
+    
     private var boundModel: Binding<String> {
         Binding(
             get: {
@@ -606,7 +624,7 @@ struct ContentView: View {
                                     .padding(.vertical, 14)
                                     .background(
                                         RoundedRectangle(cornerRadius: 30)
-                                            .fill(welcomeColors[index % welcomeColors.count])
+                                            .fill(currentPalette[index % currentPalette.count])
                                     )
                             }
                             .buttonStyle(.plain)
@@ -626,7 +644,7 @@ struct ContentView: View {
                                     .padding(.vertical, 14)
                                     .background(
                                         RoundedRectangle(cornerRadius: 30)
-                                            .fill(welcomeColors[(index + 3) % welcomeColors.count])
+                                            .fill(currentPalette[(index + 3) % currentPalette.count])
                                     )
                             }
                             .buttonStyle(.plain)
@@ -659,7 +677,7 @@ struct ContentView: View {
                         MessageBubble(message: message,
                                     // ADDED OFFSET HERE SO COLORS MATCH W/ SUGGESTED QUESTIONS
                                       colorIndex: index + starterOffset, 
-                                      welcomeColors: welcomeColors)
+                                      palette: currentPalette)
                             .id(index)
                     }
                 }
@@ -989,7 +1007,7 @@ struct ContentView: View {
 struct MessageBubble: View {
     let message: String
     let colorIndex: Int
-    let welcomeColors: [Color]
+    let palette: [Color]
     
     private var isUser: Bool {
         message.starts(with: "You:")
@@ -1015,7 +1033,7 @@ struct MessageBubble: View {
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 18)
-                            .fill(welcomeColors[colorIndex % welcomeColors.count])
+                            .fill(palette[colorIndex % palette.count])
                     )
                 Image(systemName: "person.fill")
                     .foregroundColor(.white)
